@@ -18,12 +18,14 @@ class EventProcessor:
         self._handle_edge(Coils.Sensor_1_Caixote_Verde, coils_snapshot, lambda: self.lines.run_green_line())
         self._handle_edge(Coils.Sensor_1_Caixote_Vazio, coils_snapshot, lambda: self.lines.run_empty_line())
         
-        # Sensores que verificam a saída dos caixotes das linhas
-        self._handle_edge(Coils.Sensor_2_Caixote_Azul, coils_snapshot, lambda: self.lines.stop_blue_line())
-        self._handle_edge(Coils.Sensor_2_Caixote_Verde, coils_snapshot, lambda: self.lines.stop_green_line())
-        self._handle_edge(Coils.Sensor_2_Caixote_Vazio, coils_snapshot, lambda: self.lines.stop_empty_line())
-
-        self._handle_edge(Coils.Sensor_Final_Producao, coils_snapshot, lambda: self.lines.stop_production_line())
+        self._handle_edge(Coils.Sensor_2_Caixote_Azul, coils_snapshot,
+            lambda: self._on_arrival("blue", Coils.Sensor_2_Caixote_Azul, self.lines.stop_blue_line))
+        
+        self._handle_edge(Coils.Sensor_2_Caixote_Verde, coils_snapshot,
+            lambda: self._on_arrival("green", Coils.Sensor_2_Caixote_Verde, self.lines.stop_green_line))
+        
+        self._handle_edge(Coils.Sensor_2_Caixote_Vazio, coils_snapshot,
+            lambda: self._on_arrival("empty", Coils.Sensor_2_Caixote_Vazio, self.lines.stop_empty_line))
 
         # Botões (Start/Reset/Emergency)
         if self._handle_edge(Coils.Emergency, coils_snapshot, self.server._on_emergency_toggle):
@@ -32,7 +34,7 @@ class EventProcessor:
             return
         if self._handle_edge(Coils.Start, coils_snapshot, self.server._on_start):
             return
-
+        
     # ---------- detecção de borda (idêntica à lógica original, com casos especiais) ----------
     def _handle_edge(self, addr: int, coils: List[int], callback: Callable[[], None]) -> bool:
         acionou = False
@@ -71,3 +73,7 @@ class EventProcessor:
             acionou = True
         self._prev[addr] = cur
         return acionou
+    
+    def _on_arrival(self, tipo: str, sensor_addr: int, stop_fn) -> None:
+        stop_fn()
+        self.server.auto.enqueue_arrival(tipo, sensor_addr)

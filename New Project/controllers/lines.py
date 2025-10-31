@@ -1,5 +1,5 @@
-# lines.py
 import threading
+import time
 from addresses import Coils, Inputs
 
 
@@ -10,9 +10,18 @@ class LineController:
         self._blue_running = False
         self._green_running = False
         self._empty_running = False
+        self._production_running = False
         self._lock = threading.Lock()
 
-    # Helpers de IO
+        # --- Estados da mesa ---
+        self._turntable_turn = False  # False = giro OFF/centro
+        self._turntable_belt = "stop"  # "forward" | "backward" | "stop"
+        self._belt_watch_th = None  # thread do watcher
+        self._belt_watching = False  # flag do watcher
+        self.turntable_busy = False
+        self.active_job = None
+
+    # ---------------- Helpers IO ----------------
     def _activate(self, *actuators):
         with self._lock:
             for a in actuators:
@@ -24,13 +33,11 @@ class LineController:
                 self.server.set_actuator(a, False)
 
     # ================= BLUE =================
-
     def run_blue_line(self):
         if self.server.machine_state != "running":
             return
         if self.verbose:
             print("ligando linha azul")
-        # >>> CRIA A TASK DO RUN <<<
         threading.Thread(
             target=self._t_run_blue_line, name="TRUN-BlueLine", daemon=True
         ).start()
@@ -38,7 +45,6 @@ class LineController:
     def stop_blue_line(self):
         if self.verbose:
             print("parando linha azul")
-        # >>> CRIA A TASK DO STOP (sempre pode parar) <<<
         threading.Thread(
             target=self._t_stop_blue_line, name="TSTOP-BlueLine", daemon=True
         ).start()
@@ -49,17 +55,12 @@ class LineController:
                 return
             self._blue_running = True
         try:
-            # Apenas LIGA os atuadores (sem loops/sleeps, sem desligar)
-            self._activate(
-                Inputs.Caixote_Azul_Esteira_1, Inputs.Caixote_Azul_Esteira_2
-            )
+            self._activate(Inputs.Caixote_Azul_Esteira_1, Inputs.Caixote_Azul_Esteira_2)
         finally:
-            # Mantém _blue_running=True até alguém chamar stop
             pass
 
     def _t_stop_blue_line(self):
         try:
-            # Sempre DESLIGA, não importa se _blue_running está True/False
             self._deactivate(
                 Inputs.Caixote_Azul_Esteira_1, Inputs.Caixote_Azul_Esteira_2
             )
@@ -67,7 +68,7 @@ class LineController:
             with self._lock:
                 self._blue_running = False
 
-    # ================ GREEN / EMPTY (mesmo padrão) ================
+    # ================= GREEN =================
     def run_green_line(self):
         if self.server.machine_state != "running":
             return
@@ -111,6 +112,7 @@ class LineController:
             with self._lock:
                 self._green_running = False
 
+    # ================= EMPTY =================
     def run_empty_line(self):
         if self.server.machine_state != "running":
             return
@@ -153,3 +155,282 @@ class LineController:
         finally:
             with self._lock:
                 self._empty_running = False
+
+    # ================ Production (all) ================
+    def run_production_line(self):
+        if self.server.machine_state != "running":
+            return
+        if self.verbose:
+            print("ligando linha produção")
+        threading.Thread(
+            target=self._t_run_production_line, name="TRUN-ProductionLine", daemon=True
+        ).start()
+
+    def stop_production_line(self):
+        if self.verbose:
+            print("parando linha produção")
+        threading.Thread(
+            target=self._t_stop_production_line,
+            name="TSTOP-ProductionLine",
+            daemon=True,
+        ).start()
+
+    def _t_run_production_line(self):
+        with self._lock:
+            if self._production_running:
+                return
+            self._production_running = True
+        try:
+            self._activate(Inputs.Esteira_Final_Producao_1)
+        finally:
+            pass
+
+    def _t_stop_production_line(self):
+        try:
+            self._deactivate(Inputs.Esteira_Final_Producao_1)
+        finally:
+            with self._lock:
+                self._production_running = False
+
+    # ========== Turntable Unified (ON/OFF + Belt) ==========
+    def set_turntable_async(
+        self,
+        turn_on: bool | None,
+        belt: str = "none",  # "forward" | "backward" | "stop"/"none"
+        stop_limit: str | None = None,  # "front" | "back" | None (não vigia)
+        belt_timeout_s: float = 1.0,
+    ):
+        if self.server.machine_state != "running":
+            return
+        threading.Thread(
+            target=self._t_set_turntable,
+            args=(turn_on, (belt or "none").lower(), stop_limit, belt_timeout_s),
+            name=f"TRUN-Turntable-{turn_on}-{belt}-{stop_limit}",
+            daemon=True,
+        ).start()
+
+    def turntable_on(self, belt: str = "none"):
+        self.set_turntable_async(True, belt)
+
+    def turntable_off(self, belt: str = "none"):
+        self.set_turntable_async(False, belt)
+
+    def turntable_belt_forward(self):
+        self.set_turntable_async(turn_on=None, belt="forward")
+
+    def turntable_belt_backward(self):
+        self.set_turntable_async(turn_on=None, belt="backward")
+
+    def turntable_belt_stop(self):
+        self.set_turntable_async(turn_on=None, belt="stop")
+
+    # ---------------- worker da mesa ----------------
+    def _t_set_turntable(
+        self,
+        turn_on: bool | None,
+        belt: str,
+        stop_limit: str | None,
+        belt_timeout_s: float,
+    ):
+        TURN_COIL = Inputs.Turntable1_turn
+        BELT_FWD = Inputs.Turntable1_Esteira_SaidaEntrada
+        BELT_REV = Inputs.Turntable1_Esteira_EntradaSaida
+
+        # --- gira (se pedido) ---
+        with self._lock:
+            if turn_on is True:
+                self.server.set_actuator(TURN_COIL, True)
+                self._turntable_turn = True
+            elif turn_on is False:
+                self.server.set_actuator(TURN_COIL, False)
+                self._turntable_turn = False
+
+        # --- belt interno ---
+        belt_to_watch = None
+        if belt == "forward":
+            self.server.set_actuator(BELT_REV, False)
+            self.server.set_actuator(BELT_FWD, True)
+            with self._lock:
+                self._turntable_belt = "forward"
+            belt_to_watch = "forward"
+        elif belt == "backward":
+            self.server.set_actuator(BELT_FWD, False)
+            self.server.set_actuator(BELT_REV, True)
+            with self._lock:
+                self._turntable_belt = "backward"
+            belt_to_watch = "backward"
+        elif belt in ("stop", "none"):
+            self.server.set_actuator(BELT_FWD, False)
+            self.server.set_actuator(BELT_REV, False)
+            with self._lock:
+                self._turntable_belt = "stop"
+            belt_to_watch = None
+
+        # --- watcher: escolhe o LIMITE conforme stop_limit explicitado ---
+        if stop_limit is None or belt_to_watch is None:
+            self._stop_belt_watcher()
+            if self.verbose:
+                print(
+                    f"[turntable] turn_on={turn_on} belt={belt} -> turn={getattr(self,'_turntable_turn',None)} belt_state={self._turntable_belt}"
+                )
+            return
+
+        if stop_limit.lower() == "front":
+            limit_addr = Coils.Turntable1_FrontLimit
+        elif stop_limit.lower() == "back":
+            limit_addr = Coils.Turntable1_BackLimit
+        else:
+            if self.verbose:
+                print(
+                    f"[turntable] stop_limit inválido: {stop_limit} (esperado 'front' ou 'back'); watcher desativado."
+                )
+            self._stop_belt_watcher()
+            return
+
+        # inicia watcher com grace + borda + tempo mínimo
+        self._start_belt_watcher(
+            direction=belt_to_watch, limit_addr=limit_addr, timeout_s=belt_timeout_s
+        )
+        if self.verbose:
+            print(
+                f"[turntable] turn_on={turn_on} belt={belt} stop_limit={stop_limit} -> turn={getattr(self,'_turntable_turn',None)} belt_state={self._turntable_belt}"
+            )
+
+    # ---------------- watcher da esteira da mesa ----------------
+    def _stop_belt_watcher(self):
+        """Solicita parada do watcher atual (se existir) e aguarda um pouco."""
+        self._belt_watching = False
+        th = self._belt_watch_th
+        if th and th.is_alive():
+            th.join(timeout=0.2)
+        self._belt_watch_th = None
+
+    def _start_belt_watcher(
+        self,
+        direction: str,
+        limit_addr: int,
+        timeout_s: float = 3.0,
+        grace_s: float = 0.20,
+        min_on_s: float = 0.30,
+    ):
+        # mata watcher anterior
+        self._stop_belt_watcher()
+        self._belt_watching = True
+
+        BELT_FWD = Inputs.Turntable1_Esteira_SaidaEntrada
+        BELT_REV = Inputs.Turntable1_Esteira_EntradaSaida
+        BELT_ADDR = BELT_FWD if direction == "forward" else BELT_REV
+
+        stop_evt = getattr(self.server, "_stop_evt", None)
+
+        def _watch():
+            t_on = time.time()
+            try:
+                # grace: dá tempo do motor iniciar (evita desligar se limite já começar True)
+                time.sleep(grace_s)
+
+                # snapshot inicial para exigir BORDA (0->1)
+                start_state = bool(self.server.get_sensor(limit_addr))
+                deadline = time.time() + timeout_s
+                DEBOUNCE_N = 2
+                stable = 0
+
+                while time.time() < deadline:
+                    if stop_evt and stop_evt.is_set():
+                        break
+                    if self.server.machine_state != "running":
+                        break
+
+                    cur = bool(self.server.get_sensor(limit_addr))
+                    if (not start_state) and cur:
+                        stable += 1
+                    else:
+                        stable = 0
+
+                    if stable >= DEBOUNCE_N:
+                        break
+                    time.sleep(0.02)
+
+                # tempo mínimo ligado antes de cortar
+                rem = min_on_s - (time.time() - t_on)
+                if rem > 0:
+                    time.sleep(rem)
+
+                # corta belt por limite (estável) ou por timeout (fail-safe)
+                self.server.set_actuator(BELT_ADDR, False)
+                with self._lock:
+                    self._turntable_belt = "stop"
+
+                if self.verbose:
+                    if stable >= DEBOUNCE_N:
+                        print(
+                            f"[turntable] limite (edge) atingido ({direction}); esteira interna parada."
+                        )
+                    else:
+                        print(
+                            f"[turntable] timeout ({direction}); esteira interna parada por segurança."
+                        )
+            finally:
+                self._belt_watching = False
+
+        self._belt_watch_th = threading.Thread(
+            target=_watch, name=f"TWatch-Turntable-{direction}", daemon=True
+        )
+        self._belt_watch_th.start()
+
+    def _watch_limit_and_stop(self, direction: str, limit_addr: int, timeout_s: float):
+        """
+        Espera COIL de limite (Factory I/O: sensores são COILS) sem bloquear o event loop.
+        Quando o limite aciona, desliga a direção ativa da esteira interna da mesa.
+        """
+        BELT_FWD = Inputs.Turntable1_Esteira_SaidaEntrada
+        BELT_REV = Inputs.Turntable1_Esteira_EntradaSaida
+        stop_evt = getattr(self.server, "stop_event", None) or getattr(
+            self.server, "_stop_evt", None
+        )
+
+        DEBOUNCE_N = 2
+        stable = 0
+        t0 = time.time()
+
+        while self._belt_watching:
+            if stop_evt and stop_evt.is_set():
+                break
+            if self.server.machine_state != "running":
+                break
+
+            if self.server.get_sensor(limit_addr):
+                stable += 1
+            else:
+                stable = 0
+
+            if stable >= DEBOUNCE_N:
+                if direction == "forward":
+                    self.server.set_actuator(BELT_FWD, False)
+                else:
+                    self.server.set_actuator(BELT_REV, False)
+                with self._lock:
+                    self._turntable_belt = "stop"
+                if self.verbose:
+                    print(
+                        f"[turntable] limite estável ({direction}); esteira interna parada."
+                    )
+                break
+            time.sleep(0.25)
+            if (time.time() - t0) > timeout_s:
+                # FAIL-SAFE: pare a direção ativa mesmo sem limite
+                if self.verbose:
+                    print(
+                        f"[turntable] watcher timeout ({direction}); parando belt por segurança."
+                    )
+                if direction == "forward":
+                    self.server.set_actuator(BELT_FWD, False)
+                else:
+                    self.server.set_actuator(BELT_REV, False)
+                with self._lock:
+                    self._turntable_belt = "stop"
+                break
+
+            time.sleep(0.02)
+
+        self._belt_watching = False

@@ -110,6 +110,8 @@ class FactoryModbusEventServer(Stoppable):
             self.sequence_step = "idle"
             self.machine_state = "idle"
 
+            self._all_off()
+
     def _on_emergency_toggle(self):
         print('valor da emergencia: ', self.get_sensor(Coils.Emergency))
 

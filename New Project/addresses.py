@@ -6,13 +6,16 @@ class Coils:
     Sensor_1_Caixote_Verde = 77
     Sensor_2_Caixote_Verde = 78
 
-    Sensor_1_Caixote_Azul = 80
-    Sensor_2_Caixote_Azul = 81
+    Sensor_1_Caixote_Azul  = 80
+    Sensor_2_Caixote_Azul  = 81
 
     Sensor_1_Caixote_Vazio = 83
     Sensor_2_Caixote_Vazio = 84
 
-    Sensor_Final_Producao = 86
+    Turntable1_FrontLimit  = 95
+    Turntable1_BackLimit   = 96
+
+    Sensor_Final_Producao  = 86
 
     Sensor_Write = 10
     Emitter_Blue_Button = 26
