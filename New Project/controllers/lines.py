@@ -392,8 +392,12 @@ class LineController:
         DEBOUNCE_N = 2
         stable = 0
         t0 = time.time()
+        print(f"[watcher] iniciado: direction={direction}, limit={limit_addr}, timeout={timeout_s}")
 
         while self._belt_watching:
+            # dentro do watcher loop:
+            print(f"[debug] sensor({limit_addr}) = {self.server.get_sensor(limit_addr)} belt={direction}")
+
             if stop_evt and stop_evt.is_set():
                 break
             if self.server.machine_state != "running":

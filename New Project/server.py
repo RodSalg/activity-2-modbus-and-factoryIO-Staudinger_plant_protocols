@@ -1,3 +1,4 @@
+import inspect
 import time
 import threading
 from datetime import datetime
@@ -10,8 +11,15 @@ from controllers.lines import LineController
 from controllers.events import EventProcessor
 from controllers.auto import AutoController
 
+
 class FactoryModbusEventServer(Stoppable):
-    def __init__(self, host: str = "0.0.0.0", port: int = 5020, scan_time: float = 0.05, verbose: bool = True):
+    def __init__(
+        self,
+        host: str = "0.0.0.0",
+        port: int = 5020,
+        scan_time: float = 0.05,
+        verbose: bool = True,
+    ):
         super().__init__()
         self.host = host
         self.port = port
@@ -39,7 +47,9 @@ class FactoryModbusEventServer(Stoppable):
         self._server.start()
 
         self.stop_event.clear()
-        self._event_thread = threading.Thread(target=self._event_loop, name="modbus-event-loop", daemon=True)
+        self._event_thread = threading.Thread(
+            target=self._event_loop, name="modbus-event-loop", daemon=True
+        )
         self._event_thread.start()
 
         if self.verbose:
@@ -67,6 +77,9 @@ class FactoryModbusEventServer(Stoppable):
         return bool(db.get_coils(sensor_address, 1)[0])
 
     def set_actuator(self, coil_address: int, value: bool) -> None:
+        print(
+            f"[DEBUG ACTUATOR] {coil_address} <= {value}  (chamado por {inspect.stack()[1].function})"
+        )
         db = self._db()
         db.set_discrete_inputs(coil_address, [int(value)])
 
@@ -113,10 +126,13 @@ class FactoryModbusEventServer(Stoppable):
             self._all_off()
 
     def _on_emergency_toggle(self):
-        print('valor da emergencia: ', self.get_sensor(Coils.Emergency))
+        print("valor da emergencia: ", self.get_sensor(Coils.Emergency))
 
         # Emergência ON (coil False)
-        if self.machine_state != "emergency" and self.get_sensor(Coils.Emergency) is False:
+        if (
+            self.machine_state != "emergency"
+            and self.get_sensor(Coils.Emergency) is False
+        ):
             if self.verbose:
                 print("Emergency ON")
             self.machine_state = "emergency"
@@ -124,10 +140,13 @@ class FactoryModbusEventServer(Stoppable):
             self._all_off()
 
         # Emergência OFF (coil True) -> SAIR do estado 'emergency'
-        elif self.machine_state == "emergency" and self.get_sensor(Coils.Emergency) is True:
+        elif (
+            self.machine_state == "emergency"
+            and self.get_sensor(Coils.Emergency) is True
+        ):
             if self.verbose:
                 print("Emergency OFF")
-            self.machine_state = "idle"        # <-- faltava isso
+            self.machine_state = "idle"  # <-- faltava isso
             self.sequence_step = "idle"
 
     # -------- debug --------
@@ -136,11 +155,15 @@ class FactoryModbusEventServer(Stoppable):
         current_state = (self.machine_state, self.sequence_step)
         if not hasattr(self, "_last_snapshot_state"):
             self._last_snapshot_state = current_state
-            print(f"[{datetime.now().strftime('%H:%M:%S')}] estado={self.machine_state} passo={self.sequence_step}")
+            print(
+                f"[{datetime.now().strftime('%H:%M:%S')}] estado={self.machine_state} passo={self.sequence_step}"
+            )
             print("=" * 60, "\n")
             return
 
         if current_state != self._last_snapshot_state:
             self._last_snapshot_state = current_state
-            print(f"[{datetime.now().strftime('%H:%M:%S')}] estado={self.machine_state} passo={self.sequence_step}")
+            print(
+                f"[{datetime.now().strftime('%H:%M:%S')}] estado={self.machine_state} passo={self.sequence_step}"
+            )
             print("=" * 60, "\n")

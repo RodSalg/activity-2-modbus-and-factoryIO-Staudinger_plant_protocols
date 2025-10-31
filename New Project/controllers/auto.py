@@ -91,7 +91,7 @@ class AutoController:
                 "turn": True,
                 "belt": "forward",
                 "stop_limit": "back",
-                "belt_tout": 2.0,
+                "belt_tout": 3.0,
                 "feed_delay": 1.0,
             },
             "empty": {

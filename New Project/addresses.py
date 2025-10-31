@@ -13,7 +13,7 @@ class Coils:
     Sensor_2_Caixote_Vazio = 84
 
     Turntable1_FrontLimit  = 95
-    Turntable1_BackLimit   = 96
+    Turntable1_BackLimit   = 94
 
     Sensor_Final_Producao  = 86
 
