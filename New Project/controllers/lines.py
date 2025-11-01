@@ -38,6 +38,7 @@ class LineController:
             return
         if self.verbose:
             print("ligando linha azul")
+
         threading.Thread(
             target=self._t_run_blue_line, name="TRUN-BlueLine", daemon=True
         ).start()
@@ -45,6 +46,7 @@ class LineController:
     def stop_blue_line(self):
         if self.verbose:
             print("parando linha azul")
+
         threading.Thread(
             target=self._t_stop_blue_line, name="TSTOP-BlueLine", daemon=True
         ).start()
@@ -181,13 +183,18 @@ class LineController:
                 return
             self._production_running = True
         try:
-            self._activate(Inputs.Esteira_Final_Producao_1)
+
+            self._activate(
+                Inputs.Esteira_Producao_1,
+                Inputs.Esteira_Producao_2
+            )
+
         finally:
             pass
 
     def _t_stop_production_line(self):
         try:
-            self._deactivate(Inputs.Esteira_Final_Producao_1)
+            self._deactivate(Inputs.Esteira_Producao_1)
         finally:
             with self._lock:
                 self._production_running = False
@@ -392,11 +399,15 @@ class LineController:
         DEBOUNCE_N = 2
         stable = 0
         t0 = time.time()
-        print(f"[watcher] iniciado: direction={direction}, limit={limit_addr}, timeout={timeout_s}")
+        print(
+            f"[watcher] iniciado: direction={direction}, limit={limit_addr}, timeout={timeout_s}"
+        )
 
         while self._belt_watching:
             # dentro do watcher loop:
-            print(f"[debug] sensor({limit_addr}) = {self.server.get_sensor(limit_addr)} belt={direction}")
+            print(
+                f"[debug] sensor({limit_addr}) = {self.server.get_sensor(limit_addr)} belt={direction}"
+            )
 
             if stop_evt and stop_evt.is_set():
                 break

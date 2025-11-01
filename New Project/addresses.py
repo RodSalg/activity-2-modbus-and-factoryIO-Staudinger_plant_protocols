@@ -23,9 +23,9 @@ class Coils:
 class Inputs:
     EntryConveyor = 10
 
-    Esteira_Final_Producao_1 = 14
-    Esteira_Freio_Sensor     = 15
-    Esteira_Final_Producao_2 = 16
+    Esteira_Producao_1       = 30
+    Esteira_Freio_Sensor     = 31
+    Esteira_Producao_2       = 32
 
     Emmiter_Caixote_Verde    = 23
     Emmiter_Product_Verde    = 24

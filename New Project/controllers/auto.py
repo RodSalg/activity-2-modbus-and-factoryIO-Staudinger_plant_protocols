@@ -86,6 +86,8 @@ class AutoController:
                 "stop_limit": "back",
                 "belt_tout": 3.0,
                 "feed_delay": 0.8,
+                "return_time": 6.0,
+                "exit_timeout": 6.0,
             },
             "green": {
                 "turn": True,
@@ -93,6 +95,8 @@ class AutoController:
                 "stop_limit": "back",
                 "belt_tout": 3.0,
                 "feed_delay": 1.0,
+                "return_time": 6.0,
+                "exit_timeout": 6.0,
             },
             "empty": {
                 "turn": True,
@@ -100,6 +104,8 @@ class AutoController:
                 "stop_limit": "front",
                 "belt_tout": 3.0,
                 "feed_delay": 1.0,
+                "return_time": 6.0,
+                "exit_timeout": 6.0,
             },
         }
 
@@ -126,6 +132,14 @@ class AutoController:
                     stop_limit=P["stop_limit"],  # <<< AQUI É O PONTO-CHAVE
                     belt_timeout_s=P["belt_tout"],
                 )
+
+                # Dispara a FASE 2 (retorno + descarga) em paralelo
+                threading.Thread(
+                    target=self._post_limit_sequence,
+                    args=(POLICY,),
+                    name="post-limit",
+                    daemon=True,
+                ).start()
 
                 # 2) aguarda um pequeno intervalo ANTES de religar a esteira da linha
                 t_dead = time.time() + P["feed_delay"]
@@ -176,3 +190,69 @@ class AutoController:
 
         if self.verbose:
             print("Ciclo automático encerrado")
+
+    def _post_limit_sequence(self, policy: dict):
+        """
+        Fase 2: só entra DEPOIS do watcher começar e terminar.
+        1) Espera watcher iniciar (_belt_watching=True) com timeout curto.
+        2) Espera watcher terminar (_belt_watching=False).
+        3) Volta mesa ao centro (turn OFF) sem belt (tempo fixo).
+        4) Descarrega: belt oposta + esteira final.
+        5) Espera Sensor_Final_Producao (ou timeout) e para tudo.
+        """
+
+        # 0) aguarda o watcher COMEÇAR (evita atropelar o giro inicial)
+        start_deadline = time.time() + 1.0  # até 1s para o watcher levantar
+        while (
+            not getattr(self.lines, "_belt_watching", False)
+            and time.time() < start_deadline
+        ):
+            time.sleep(0.01)
+
+        if not getattr(self.lines, "_belt_watching", False):
+            if self.server.verbose:
+                print(
+                    "[post] watcher não iniciou; abortando pós-limite para não atropelar o giro."
+                )
+            self.turntable_busy = False
+            return
+
+        # 1) agora espera o watcher TERMINAR (limite atingido ou timeout interno)
+        end_deadline = time.time() + 12.0  # segurança
+        while (
+            getattr(self.lines, "_belt_watching", False) and time.time() < end_deadline
+        ):
+            time.sleep(0.01)
+
+        # 2) retorna mesa ao centro (sem belt)
+        return_time = policy.get("return_time", 1.1)
+        if self.server.verbose:
+            print(f"[post] retornando turntable ao centro por ~{return_time}s")
+        self.lines.set_turntable_async(turn_on=False, belt="stop")
+        time.sleep(return_time)
+
+        # 3) descarregar: esteira final produção
+        if self.server.verbose:
+            print(
+                "[post] descarregando: belt=forward (SaidaEntrada) + esteira final produção ON"
+            )
+
+        self.lines.set_turntable_async(turn_on=None, belt="forward", stop_limit=None)
+
+        # 4) espera saída na produção (ou timeout)
+        exit_tout = policy.get("exit_timeout", 6.0)
+        t0 = time.time()
+        while (
+            not self.server.get_sensor(Coils.Sensor_Final_Producao)
+            and (time.time() - t0) < exit_tout
+        ):
+            time.sleep(0.02)
+
+        # 5) para belt interna e produção; libera fila
+        if self.server.verbose:
+            print(
+                "[post] Sensor_Final_Producao detectado ou timeout: parando belt interna e ligando esteira produção"
+            )
+        self.lines.turntable_belt_stop()
+        self.lines.run_production_line()
+        self.turntable_busy = False

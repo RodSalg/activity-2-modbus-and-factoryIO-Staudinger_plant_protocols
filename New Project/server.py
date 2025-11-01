@@ -76,6 +76,12 @@ class FactoryModbusEventServer(Stoppable):
         db = self._db()
         return bool(db.get_coils(sensor_address, 1)[0])
 
+    def get_actuator(self, di_address: int) -> bool:
+        """Lê o estado do Discrete Input no endereço informado (debug/telemetria)."""
+        db = self._db()
+        val = db.get_discrete_inputs(di_address, 1)
+        return bool(val and val[0])
+
     def set_actuator(self, coil_address: int, value: bool) -> None:
         print(
             f"[DEBUG ACTUATOR] {coil_address} <= {value}  (chamado por {inspect.stack()[1].function})"
