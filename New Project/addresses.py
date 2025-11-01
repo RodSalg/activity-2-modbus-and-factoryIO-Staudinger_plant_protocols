@@ -1,7 +1,11 @@
+from enum import IntEnum
+
+
 class Coils:
     Start = 24
     Emergency = 9
     resetButton = 27
+    RestartButton = 25
 
     Sensor_1_Caixote_Verde = 77
     Sensor_2_Caixote_Verde = 78
@@ -51,3 +55,22 @@ class Inputs:
 
     Emitter_Blue_Light = 27
     Vision_Sensor_0 = 97
+
+class Esteiras(IntEnum):
+    Esteira_Producao_1 = 30
+    Esteira_Freio_Sensor = 31
+    Esteira_Producao_2 = 32
+
+    Emmiter_Caixote_Azul     = 20
+    Emmiter_Product_Azul     = 21
+    Caixote_Azul_Esteira_1   = 82
+    Caixote_Azul_Esteira_2   = 83
+
+    Emmiter_Caixote_Vazio    = 22
+    Caixote_Vazio_Esteira_1  = 84
+    Caixote_Vazio_Esteira_2  = 85
+    Caixote_Vazio_Esteira_3  = 86
+    Caixote_Vazio_Esteira_4  = 87
+
+    Turntable1_Esteira_EntradaSaida = 94
+    Turntable1_Esteira_SaidaEntrada = 95

@@ -6,7 +6,7 @@ from typing import Optional, List
 from pyModbusTCP.server import ModbusServer
 
 from utils import Stoppable, now
-from addresses import Inputs, Coils
+from addresses import Inputs, Coils, Esteiras
 from controllers.lines import LineController
 from controllers.events import EventProcessor
 from controllers.auto import AutoController
@@ -97,6 +97,15 @@ class FactoryModbusEventServer(Stoppable):
     def _all_off(self) -> None:
         self._write_coil(Inputs.EntryConveyor, False)
 
+        for name, addr in Esteiras.__members__.items():
+            self.set_actuator(addr.value, False)
+
+    def _all_on(self) -> None:
+        # self._write_coil(Inputs.EntryConveyor, False)
+
+        for name, addr in Esteiras.__members__.items():
+            self.set_actuator(addr.value, True)
+
     # -------- loop de eventos --------
     def _event_loop(self):
         db = self._db()
@@ -124,12 +133,12 @@ class FactoryModbusEventServer(Stoppable):
 
     def _on_reset(self):
         if self.verbose:
-            print("Reset")
-        if self.get_sensor(Coils.Emergency) is True:
+            print("Restart Process")
+        if self.get_sensor(Coils.RestartButton) is True:
             self.sequence_step = "idle"
-            self.machine_state = "idle"
+            self.machine_state = "running"
 
-            self._all_off()
+            self._all_on()
 
     def _on_emergency_toggle(self):
         print("valor da emergencia: ", self.get_sensor(Coils.Emergency))

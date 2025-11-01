@@ -30,7 +30,7 @@ class EventProcessor:
         # Botões (Start/Reset/Emergency)
         if self._handle_edge(Coils.Emergency, coils_snapshot, self.server._on_emergency_toggle):
             return
-        if self._handle_edge(Coils.resetButton, coils_snapshot, self.server._on_reset):
+        if self._handle_edge(Coils.RestartButton, coils_snapshot, self.server._on_reset):
             return
         if self._handle_edge(Coils.Start, coils_snapshot, self.server._on_start):
             return
@@ -61,6 +61,16 @@ class EventProcessor:
             if cur != prev:
                 if self.verbose:
                     print(f"Emergência mudou: {prev} → {cur}")
+                callback()
+                acionou = True
+            self._prev[addr] = cur
+            return acionou
+        
+        if addr == Coils.RestartButton:
+            prev = self._prev.get(addr, 0)
+            if cur != prev:
+                if self.verbose:
+                    print(f"Restart process mudou: {prev} → {cur}")
                 callback()
                 acionou = True
             self._prev[addr] = cur
