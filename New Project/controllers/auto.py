@@ -2,6 +2,7 @@
 from queue import Queue
 import threading, time
 from addresses import Coils, Inputs
+from services.orders import OrderManager
 
 
 class AutoController:
@@ -25,6 +26,19 @@ class AutoController:
         self._pending_enq = set()  # guarda sensor_addr em atraso
         self._hal_busy = False
 
+        # ======= Turntable 2 e Pedidos =======
+        self.orders = OrderManager()  # gerencia pedidos A/B
+
+        self.tt2_q: Queue[str] = Queue()  # fila própria da turntable 2
+        self._tt2_worker_th = None
+        self.turntable2_busy = False
+
+        # Tempos e timeouts (ajuste conforme Factory I/O)
+        self.TT2_GIRO_S = 1.6
+        self.TT2_RETORNO_S = 1.6
+        self.TT2_ENTRADA_TOUT = 8.0
+        self.TT2_SAIDA_TOUT = 10.0
+
     def join(self, timeout=2.0):
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout)
@@ -37,6 +51,13 @@ class AutoController:
         self._thread = threading.Thread(
             target=self._auto_cycle, name="auto-cycle", daemon=True
         )
+
+        if not self._tt2_worker_th or not self._tt2_worker_th.is_alive():
+            self._tt2_worker_th = threading.Thread(
+                target=self._tt2_worker, name="tt2-worker", daemon=True
+            )
+            self._tt2_worker_th.start()
+
         self._thread.start()
 
         # inicia consumidor da fila de chegadas
@@ -46,18 +67,25 @@ class AutoController:
             )
             self._arrival_worker_th.start()
 
+        # inicia worker da Turntable 2
+        if not self._tt2_worker_th or not self._tt2_worker_th.is_alive():
+            self._tt2_worker_th = threading.Thread(
+                target=self._tt2_worker, name="tt2-worker", daemon=True
+            )
+            self._tt2_worker_th.start()
+
     def stop(self, join_timeout: float = 2.0):
         """Para o consumidor da fila e aguarda as threads finalizarem."""
         try:
             # Envia sentinela para destravar o arrival_worker
             self.arrival_q.put(("__HALT__", -1))
+            self.tt2_q.put("__HALT__")  # <<< adiciona essa linha
         except Exception:
             pass
-        # Não dependemos do auto-cycle parar (ele é daemon).
         self.join(timeout=join_timeout)
 
     def _read(self, coil_enum):
-        """ Helper simples para ler coil/sensor (True/False)"""
+        """Helper simples para ler coil/sensor (True/False)"""
         try:
             return bool(self.server.get_sensor(coil_enum.value))
         except Exception:
@@ -65,10 +93,19 @@ class AutoController:
 
     # <<< OPCIONAL: implemente o que fazer com a classificação >>>
     def on_hal_classified(self, klass: str):
-        """
-        Substitua pelo seu fluxo (ex.: enfileirar, acionar desvios, log, etc.)
-        """
-        pass
+        # Se NÃO houver pedido -> TT2 ciclo padrão
+        try:
+            no_orders = not self.orders.has_pending()
+        except Exception:
+            no_orders = True  # fallback (se orders não tiver has_pending)
+
+        if no_orders:
+            self.tt2_q.put("NO_ORDER")
+            if self.verbose:
+                print("[HAL] sem pedido -> enfileirando ciclo padrão Turntable2")
+        else:
+            if self.verbose:
+                print("[HAL] há pedidos -> fluxo por destino (A/B)")
 
     # chamado pelos EVENTS (no edge do Sensor_2)
     def enqueue_arrival(self, tipo: str, sensor_addr: int):
@@ -147,7 +184,7 @@ class AutoController:
             if tipo == "HAL":
                 if self.server.verbose:
                     print("[arrival] HAL -> parar Esteira_Producao_2 e classificar")
-                
+
                 # 1) Para esteira produção 2 imediatamente
                 self.server.set_actuator(Inputs.Esteira_Producao_2, False)
 
@@ -156,7 +193,9 @@ class AutoController:
 
                 # 3) Após classificar (seja azul, verde ou vazio), religa a esteira
                 if self.server.verbose:
-                    print(f"[HAL] classificação concluída ({result}), religando Esteira_Producao_2")
+                    print(
+                        f"[HAL] classificação concluída ({result}), religando Esteira_Producao_2"
+                    )
                 self.server.set_actuator(Inputs.Esteira_Producao_2, True)
 
                 self.arrival_q.task_done()
@@ -287,6 +326,15 @@ class AutoController:
                 "[post] descarregando: belt=forward (SaidaEntrada) + esteira final produção ON"
             )
 
+        self.lines._t_set_turntable(
+            turn_on=None,
+            belt="forward",  # descarregar
+            stop_limit="back",  # quando belt=forward, vigia limite de trás
+            belt_timeout_s=1.0,  # pode ajustar; 1.0–1.2 costuma ir bem
+        )  # exemplo indicativo
+
+        self.lines._activate(Inputs.Esteira_Producao_2, Inputs.Esteira_Estoque)  # já liga produção final
+
         self.lines.set_turntable_async(turn_on=None, belt="forward", stop_limit=None)
 
         # 4) espera saída na produção (ou timeout)
@@ -312,7 +360,7 @@ class AutoController:
         """
         Janela de decisão após HAL=1:
           - Para Esteira_Producao_2 imediatamente
-          - Observa HAL_BLUE_DETECT e HAL_GREEN_DETECT por 'window_ms'
+          - Observa Vision_Blue e Vision_Green por 'window_ms'
           - Se azul ≥ debounce -> BLUE
             senão, se verde ≥ debounce -> GREEN
             senão -> EMPTY
@@ -349,3 +397,90 @@ class AutoController:
             self.on_hal_classified(klass)
         finally:
             self._hal_busy = False
+
+        # ========== TURN TABLE 2 ==========
+
+    def _tt2_worker(self):
+        stop_evt = getattr(self.server, "_stop_evt", None)
+        while not (stop_evt and stop_evt.is_set()):
+            job = self.tt2_q.get()
+            if job == "__HALT__":
+                self.tt2_q.task_done()
+                break
+
+            # aguarda mesa ficar livre
+            while self.turntable2_busy and not (stop_evt and stop_evt.is_set()):
+                time.sleep(0.01)
+
+            self.turntable2_busy = True
+            try:
+                if job == "NO_ORDER":
+                    self._tt2_cycle_no_order()
+            finally:
+                self.turntable2_busy = False
+                self.tt2_q.task_done()
+
+    def _tt2_cycle_no_order(self):
+        """
+        Sequência padrão quando não há pedidos:
+        1) Liga Esteira Final 2.
+        2) Liga discharge até detectar Discharg_Sensor, então para.
+        3) Gira turntable (turn ON) por TT2_GIRO_S.
+        4) Liga discharge novamente até Sensor_Final_Producao ou timeout.
+        5) Desliga tudo e retorna mesa (turn OFF).
+        """
+        if self.server.machine_state != "running":
+            return
+
+        # 1) garante esteira final ligada
+        self.server.set_actuator(Inputs.Esteira_Producao_2, True)
+
+        # 2) entrada: discharge até sensor
+        self.server.set_actuator(Inputs.Discharg_turn, True)
+        t0 = time.time()
+        while (not self.server.get_sensor(Coils.Discharg_Sensor)) and (
+            time.time() - t0
+        ) < self.TT2_ENTRADA_TOUT:
+            time.sleep(0.02)
+        self.server.set_actuator(Inputs.Discharg_turn, False)
+
+        # 3) giro
+        self.server.set_actuator(Inputs.Turntable2_turn, True)
+        time.sleep(self.TT2_GIRO_S)
+
+        # 4) descarga
+        self.server.set_actuator(Inputs.Discharg_turn, True)
+        t1 = time.time()
+        while (not self.server.get_sensor(Coils.Sensor_Final_Producao)) and (
+            time.time() - t1
+        ) < self.TT2_SAIDA_TOUT:
+            time.sleep(0.02)
+        self.server.set_actuator(Inputs.Discharg_turn, False)
+
+        # 5) retorno
+        self.server.set_actuator(Inputs.Turntable2_turn, False)
+        time.sleep(self.TT2_RETORNO_S)
+        if self.verbose:
+            print("[TT2] ciclo padrão concluído.")
+
+    def _arm_tt2_if_idle(self, motivo: str):
+        if not self.turntable2_busy:
+            self.tt2_q.put("NO_ORDER")
+            if self.verbose:
+                print(f"[TT2] armado via {motivo} -> enfileirado NO_ORDER")
+
+    # auto.py (dentro de AutoController)
+
+    def arm_tt2_if_idle(self, motivo: str = "Load_Sensor"):
+        """Arma o ciclo padrão da TT2 se ela não estiver ocupada."""
+        return self._arm_tt2_if_idle(motivo)
+
+    # Mantém a esteira de estoque ligada; não há desligamento automático aqui
+    def _start_stock_belt(self):
+        # Substitua Inputs.Esteira_Estoque pelo enum/ID que você usa de fato
+        self._activate(Inputs.Esteira_Estoque)
+        if self.verbose:
+            print("[STOCK] Esteira_Estoque ON (mantém ligada)")
+
+    def start_stock_belt(self):
+        return self._start_stock_belt()

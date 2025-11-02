@@ -27,6 +27,9 @@ class EventProcessor:
         
         self._handle_edge(Coils.Sensor_2_Caixote_Vazio, coils_snapshot,
             lambda: self._on_arrival("empty", Coils.Sensor_2_Caixote_Vazio, self.lines.stop_empty_line))
+        
+        self._handle_edge(Coils.Load_Sensor,coils_snapshot,
+            lambda: self.server.auto.arm_tt2_if_idle("Load_Sensor"))
 
         # Botões (Start/Reset/Emergency)
         if self._handle_edge(Coils.Emergency, coils_snapshot, self.server._on_emergency_toggle):
@@ -38,7 +41,7 @@ class EventProcessor:
         if self._handle_edge(Coils.Stop, coils_snapshot, self.server._on_stop):
             return
         
-        hal_idx  = Coils.Sensor_Hall  # índice/enum do coil HAL
+        hal_idx  = Coils.Sensor_Hall
         hal_now  = bool(coils_snapshot[hal_idx])
         if hal_now and not self._hal_prev:
             if self.server.verbose:
@@ -101,3 +104,14 @@ class EventProcessor:
     def _on_arrival(self, tipo: str, sensor_addr: int, stop_fn) -> None:
         stop_fn()
         self.server.auto.enqueue_arrival(tipo, sensor_addr)
+
+    def _handle_edge_fall(self, addr: int, coils: List[int], callback: Callable[[], None]) -> bool:
+        """Aciona callback na borda de QUEDA (1->0)."""
+        acionou = False
+        cur = int(bool(coils[addr])) if addr < len(coils) else 0
+        prev = self._prev.get(addr, cur)
+        if cur == 0 and prev == 1:
+            callback()
+            acionou = True
+        self._prev[addr] = cur
+        return acionou

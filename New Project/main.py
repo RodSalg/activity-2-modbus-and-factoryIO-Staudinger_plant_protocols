@@ -1,8 +1,7 @@
 import time
-from random_feeder import RandomFeeder
+from simulators import RandomFeeder
 from server import FactoryModbusEventServer
-from controllers.auto import AutoController
-
+from controllers import AutoController
 
 def main():
     srv = FactoryModbusEventServer(
@@ -12,7 +11,7 @@ def main():
     auto = AutoController(srv, verbose=True)
     srv.auto = auto
 
-    feeder = RandomFeeder(srv, period_s=(4, 8), pulse_ms=360)
+    feeder = RandomFeeder(srv, period_s=(8, 12), pulse_ms=360)
 
     srv.start()
     feeder.start()
