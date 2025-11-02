@@ -147,13 +147,19 @@ class AutoController:
             if tipo == "HAL":
                 if self.server.verbose:
                     print("[arrival] HAL -> parar Esteira_Producao_2 e classificar")
+                
                 # 1) Para esteira produção 2 imediatamente
                 self.server.set_actuator(Inputs.Esteira_Producao_2, False)
 
-                # 2) Executa a rotina de classificação (sem abrir nova thread aqui)
-                #    hal_sequence deve cuidar de ler sensores de cor (ex: BLUE/GREEN),
-                #    aguardar a janela de tempo e decidir vazio se nada acionar.
-                self.hal_sequence()
+                # 2) Executa a rotina de classificação (aguarda resultado)
+                result = self.hal_sequence()
+
+                # 3) Após classificar (seja azul, verde ou vazio), religa a esteira
+                if self.server.verbose:
+                    print(f"[HAL] classificação concluída ({result}), religando Esteira_Producao_2")
+                self.server.set_actuator(Inputs.Esteira_Producao_2, True)
+
+                self.arrival_q.task_done()
                 continue
 
             # espere a mesa estar livre
