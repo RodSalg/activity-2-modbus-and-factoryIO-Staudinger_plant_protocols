@@ -222,8 +222,8 @@ class LineController:
     def set_turntable_async(
         self,
         turn_on: bool | None,
-        belt: str = "none",            # "forward" | "backward" | "stop"/"none"
-        stop_limit: str | None = None, # "front" | "back" | None (não vigia)
+        belt: str = "none",  # "forward" | "backward" | "stop"/"none"
+        stop_limit: str | None = None,  # "front" | "back" | None (não vigia)
         belt_timeout_s: float = 1.0,
     ):
         if self.server.machine_state != "running":
@@ -235,13 +235,17 @@ class LineController:
         #   - o watcher da TT1 ainda está ativo (_belt_watching=True).
         # Obs.: Se preferir não BLOQUEAR, você pode apenas "return" quando ocupado.
         wait_deadline = time.time() + 10.0  # timeout de segurança para não travar
-        while (self.turntable1_busy or getattr(self, "_belt_watching", False)) and time.time() < wait_deadline:
+        while (
+            self.turntable1_busy or getattr(self, "_belt_watching", False)
+        ) and time.time() < wait_deadline:
             time.sleep(0.01)
 
         if self.turntable1_busy or getattr(self, "_belt_watching", False):
             # Ainda ocupado após timeout, não agenda nova operação.
             if self.verbose:
-                print("[TT1][GUARDA] ocupado (busy/watcher ativo); ignorando comando para evitar atropelo.")
+                print(
+                    "[TT1][GUARDA] ocupado (busy/watcher ativo); ignorando comando para evitar atropelo."
+                )
             return
         # =====================================================================================
 

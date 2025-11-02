@@ -180,11 +180,12 @@ class EventProcessor:
         return acionou
 
     def _on_create_op(self):
-        # cadastra N pedidos com {cor, caixas}; insumo=1 fixo (implícito)
         if self.verbose:
             print("[EVENTS] Create_OP → cadastrando pedidos…")
         self.server.auto.orders.create_order(
             color=DEFAULT_ORDER_COLOR,
             boxes=DEFAULT_ORDER_BOXES,
-            count=DEFAULT_ORDER_COUNT
+            count=DEFAULT_ORDER_COUNT,
         )
+        # CORRETO: mudar o modo no AutoController
+        self.server.auto._set_mode_order()

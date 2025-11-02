@@ -37,11 +37,13 @@ class AutoController:
         self.TT2_SAIDA_TOUT = 10.0
 
         self._stop_event = threading.Event()
-        self.running = False                
-        self._tt2_thread = None              # handler da thread da TT2
+        self.running = False
+        self._tt2_thread = None  # handler da thread da TT2
 
         self._hal_prev = False
         self._hal_inhibit = False
+
+        self.fulfillment_mode = "stock"
 
     def join(self, timeout=2.0):
         if self._thread and self._thread.is_alive():
@@ -109,22 +111,26 @@ class AutoController:
         """
         try:
             has_orders = self.orders and self.orders.has_pending()
-            is_order   = has_orders and self.orders.can_fulfill(klass)
+            is_order = has_orders and self.orders.can_fulfill(klass)
         except Exception:
             has_orders = False
-            is_order   = False
+            is_order = False
 
-        if is_order:
+        if self._should_route_to_order(klass):
             # atende pedido AGORA (sem girar)
             self.tt2_q.put(("ORDER", klass))
             if self.verbose:
-                print(f"[HAL] classificado (pedido): {klass} -> atender agora na Central")
+                print(
+                    f"[HAL] classificado (pedido): {klass} -> atender agora na Central"
+                )
         else:
             # fluxo padrão (sem pedido ou cor errada) -> Estoque
             self.tt2_q.put("NO_ORDER")
             if self.verbose:
                 motivo = "sem pedido" if not has_orders else f"cor não atende ({klass})"
-                print(f"[HAL] classificado (não pedido): {klass} -> {motivo}, enfileirando NO_ORDER")
+                print(
+                    f"[HAL] classificado (não pedido): {klass} -> {motivo}, enfileirando NO_ORDER"
+                )
 
     # chamado pelos EVENTS (no edge do Sensor_2)
     def enqueue_arrival(self, tipo: str, sensor_addr: int):
@@ -207,7 +213,9 @@ class AutoController:
                 self._hal_inhibit = True
                 try:
                     if self.server.verbose:
-                        print("[arrival] HAL -> parar Esteira_Producao_2 e classificar (inibido)")
+                        print(
+                            "[arrival] HAL -> parar Esteira_Producao_2 e classificar (inibido)"
+                        )
 
                     # 1) Para a esteira de produção 2 uma única vez
                     self.server.set_actuator(Inputs.Esteira_Producao_2, False)
@@ -218,7 +226,9 @@ class AutoController:
 
                     # 3) Religa a esteira ao final da janela
                     if self.server.verbose:
-                        print(f"[HAL] classificação concluída ({result}), religando Esteira_Producao_2")
+                        print(
+                            f"[HAL] classificação concluída ({result}), religando Esteira_Producao_2"
+                        )
                     self.server.set_actuator(Inputs.Esteira_Producao_2, True)
                     # time.sleep(0.12)
                     # self.server.set_actuator(Inputs.Esteira_Producao_2, False)
@@ -386,8 +396,13 @@ class AutoController:
         self.turntable_busy = False
 
     # ========== HAL Sequence ==========
-    def hal_sequence(self, window_ms: int = 700, debounce: int = 2,
-                    align_ms: int = 180, sample_while_running: bool = False):
+    def hal_sequence(
+        self,
+        window_ms: int = 700,
+        debounce: int = 2,
+        align_ms: int = 180,
+        sample_while_running: bool = False,
+    ):
         """
         Fluxo:
         1) HAL=1 -> (opção A) mantém a esteira rodando por align_ms p/ posicionar
@@ -407,8 +422,10 @@ class AutoController:
                 t_end = time.time() + (window_ms / 1000.0)
                 seen_blue = seen_green = 0
                 while time.time() < t_end and self.server.machine_state == "running":
-                    if self._read(Coils.Vision_Blue):  seen_blue += 1
-                    if self._read(Coils.Vision_Green): seen_green += 1
+                    if self._read(Coils.Vision_Blue):
+                        seen_blue += 1
+                    if self._read(Coils.Vision_Green):
+                        seen_green += 1
                     time.sleep(0.01)
                 # depois para a esteira
                 self.server.set_actuator(Inputs.Esteira_Producao_2, False)
@@ -421,8 +438,10 @@ class AutoController:
                 t_end = time.time() + (window_ms / 1000.0)
                 seen_blue = seen_green = 0
                 while time.time() < t_end and self.server.machine_state == "running":
-                    if self._read(Coils.Vision_Blue):  seen_blue += 1
-                    if self._read(Coils.Vision_Green): seen_green += 1
+                    if self._read(Coils.Vision_Blue):
+                        seen_blue += 1
+                    if self._read(Coils.Vision_Green):
+                        seen_green += 1
                     time.sleep(0.01)
 
             # decisão com debounce
@@ -444,7 +463,7 @@ class AutoController:
     def _tt2_worker(self):
         while not self._stop_event.is_set():
             job = self.tt2_q.get()
-            if job is None:   # sentinela para encerrar
+            if job is None:  # sentinela para encerrar
                 self.tt2_q.task_done()
                 break
             try:
@@ -455,7 +474,6 @@ class AutoController:
                     self._tt2_cycle_no_order()
             finally:
                 self.tt2_q.task_done()
-
 
     def _tt2_cycle_no_order(self):
         """
@@ -500,29 +518,20 @@ class AutoController:
         if self.verbose:
             print("[TT2] ciclo padrão concluído.")
 
-    def _arm_tt2_if_idle(self, motivo: str):
-        # não arma se já estiver ocupada
-        if self.turntable2_busy:
+    def arm_tt2_if_idle(self, motivo: str = ""):
+        # Só arma fluxo NO_ORDER se NÃO houver pedido (modo=STOCK)
+        if self.fulfillment_mode != "stock":
+            if self.server.verbose:
+                print("[TT2] arming BLOQUEADO (pedido em atendimento / modo ORDER)")
             return
-        # não arma se houver pedido pendente
+        # (restante igual) — se estiver ociosa, enfileira NO_ORDER
         try:
-            if self.orders and self.orders.has_pending():
-                if self.verbose:
-                    print("[TT2] arming BLOQUEADO (pedido pendente)")
-                return
-        except Exception:
-            if self.verbose:
-                print("[TT2] arming BLOQUEADO (erro ao checar pedidos)")
-            return
-
-        # se chegou aqui, arma NO_ORDER
-        self.tt2_q.put("NO_ORDER")
-        if self.verbose:
-            print(f"[TT2] armado via {motivo} -> enfileirado NO_ORDER")
-
-    def arm_tt2_if_idle(self, motivo: str = "Load_Sensor"):
-        """Arma o ciclo padrão da TT2 se ela não estiver ocupada e não houver pedido."""
-        return self._arm_tt2_if_idle(motivo)
+            self.tt2_q.put("NO_ORDER")
+            if self.server.verbose:
+                print(f"[TT2] arming OK ({motivo}) -> NO_ORDER")
+        except Exception as e:
+            if self.server.verbose:
+                print(f"[TT2] arming erro: {e}")
 
     def _start_stock_belt(self):
         # Substitua Inputs.Esteira_Estoque pelo enum/ID que você usa de fato
@@ -571,10 +580,10 @@ class AutoController:
         try:
 
             self.lines._t2_set_turntable(
-                turn_on=None,          # sem giro
-                belt="forward",        # descarregar para esteira central
-                stop_limit=None,       # sem limite, pois não tem giro
-                belt_timeout_s=1.5     # tempo até detectar Sensor_Discharge (ou timeout)
+                turn_on=None,  # sem giro
+                belt="forward",  # descarregar para esteira central
+                stop_limit=None,  # sem limite, pois não tem giro
+                belt_timeout_s=1.5,  # tempo até detectar Sensor_Discharge (ou timeout)
             )
 
             # destino do pedido: Esteira_Central (CONFIRA o ID no addresses.py)
@@ -583,8 +592,11 @@ class AutoController:
             # aguarda Discharg_Sensor subir e cair (true -> false)
             was_high = False
             t0 = time.time()
-            while time.time() - t0 < belt_timeout_s and self.server.machine_state == "running":
-                val = self.lines._read(Coils.Discharg_Sensor)
+            while (
+                time.time() - t0 < belt_timeout_s
+                and self.server.machine_state == "running"
+            ):
+                val = self.server.get_sensor(Coils.Discharg_Sensor)
                 if val:
                     was_high = True
                 elif was_high and not val:
@@ -592,13 +604,55 @@ class AutoController:
                 time.sleep(0.01)
 
             # para belt interno
-            self.lines._t2_set_turntable(turn_on=None, belt="stop")
+            self.lines._t2_set_turntable(turn_on=None, belt="stop",stop_limit=None , belt_timeout_s= 0.0)
 
             # baixa no pedido
             if self.orders:
                 self.orders.consume(klass)
+            
+            try:
+                if self.orders and klass in self.orders:
+                    self.orders[klass] = max(0, self.orders[klass] - 1)
+                    if self.server.verbose:
+                        print(f"[ORDER] baixa dada em {klass}. Restantes: {self.orders[klass]}")
+            except Exception:
+                pass
+
+            # Se NÃO há mais nenhum pedido aberto, muda para STOCK
+            if not self._has_any_open_order():
+                self._set_mode_stock()
 
             if self.verbose:
                 print("[TT2][ORDER] concluído.")
         finally:
             self.turntable2_busy = False
+
+    def _set_mode_order(self):
+        if self.server.verbose:
+            print("[MODE] mudando para ORDER (atendendo pedido)")
+        self.fulfillment_mode = "order"
+
+    def _set_mode_stock(self):
+        if self.server.verbose:
+            print("[MODE] mudando para STOCK (sem pedido: tudo vai para estoque)")
+        self.fulfillment_mode = "stock"
+
+    def _has_any_open_order(self) -> bool:
+        try:
+            return self.orders is not None and self.orders.has_pending()
+        except Exception:
+            return False
+        
+    def _should_route_to_order(self, klass: str) -> bool:
+        # Só manda pra Central se: modo ORDER, há pedidos pendentes
+        # e o OrderManager confirma que essa cor pode ser atendida.
+        try:
+            return (
+                self.fulfillment_mode == "order"
+                and self.orders is not None
+                and self.orders.has_pending()
+                and self.orders.can_fulfill(klass)
+            )
+        except Exception:
+            return False
+
