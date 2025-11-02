@@ -117,18 +117,12 @@ python main.py
 │  └─ lines.py
 ├─ simulators/
 │  └─ random_feeder.py
+├─ services/
+│  └─ orders.py
 ├─ addresses.py
-├─ orders.py
 ├─ server.py
 ├─ utils.py
 └─ main.py
-```
-
-## Próximos Passos
-
-* Exportar a documentação consolidada (PDF/README detalhado)
-* Adicionar **logging estruturado** e **métricas** no servidor
-* Expor **API HTTP/MQTT** para monitoramento remoto
 
 ---
 
