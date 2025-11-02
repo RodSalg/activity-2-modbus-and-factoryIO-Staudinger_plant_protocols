@@ -6,54 +6,54 @@ Abaixo está um fluxograma **Mermaid** que representa o caminho completo do sina
 flowchart LR
     %% Origem dos eventos
     subgraph Origem
-      RF[RandomFeeder\n(emissor de pulses)]
-      HW[Sensores / Botões\n(Modbus Coils)]
+      RF[RandomFeeder<br>(simulador de peças)]
+      HW[Sensores / Botões<br>(Modbus Coils)]
     end
 
     %% Servidor
-    subgraph Servidor Modbus
-      EV[EventProcessor\n(events.py)]
-      SRV[FactoryModbusEventServer\n(server.py)]
+    subgraph Servidor_Modbus
+      EV[EventProcessor<br>events.py]
+      SRV[FactoryModbusEventServer<br>server.py]
     end
 
     %% Controle de alto nível
-    subgraph Controle Automático
-      AUTO[AutoController\n(auto.py)]
-      ORD[OrderManager\n(orders.py)]
+    subgraph Controle_Automático
+      AUTO[AutoController<br>auto.py]
+      ORD[OrderManager<br>orders.py]
     end
 
     %% Acionamentos físicos
     subgraph Acionamentos
-      LINES[LineController\n(lines.py)]
-      TT1[Turntable 1\n(giro + belt interna)]
-      TT2[Turntable 2\n(load/discharge)]
+      LINES[LineController<br>lines.py]
+      TT1[Turntable 1<br>(giro + esteira interna)]
+      TT2[Turntable 2<br>(load / discharge)]
     end
 
     %% Conexões de origem → servidor
     RF -->|pulsos Inputs.*| SRV
-    HW -->|coils lidos| SRV
+    HW -->|leitura de coils| SRV
 
     %% Loop de eventos
-    SRV -->|polling| EV
-    EV -->|bordas detectadas\nStart/Stop/Emergency/Restart| SRV
-    EV -->|arrivals (blue/green/empty)\n& HAL triggers| AUTO
+    SRV -->|polling periódico| EV
+    EV -->|bordas detectadas:<br>Start / Stop / Emergency / Restart| SRV
+    EV -->|detecção de chegada + HAL| AUTO
 
     %% Decisão automática
     AUTO -->|set_turntable_async()| LINES
     AUTO -->|hal_sequence()| AUTO
-    AUTO -->|on_hal_classified()\n(NO_ORDER / ORDER)| AUTO
-    AUTO <-.-> ORD
+    AUTO -->|on_hal_classified()<br>(NO_ORDER / ORDER)| AUTO
+    AUTO <-->|consulta / consumo| ORD
 
     %% Acionamento físico
-    LINES -->|_t_set_turntable()\nwatcher de limite| TT1
-    AUTO -->|_tt2_worker()\nNO_ORDER / ORDER| TT2
+    LINES -->|comandos TT1<br>(giro, belt)| TT1
+    AUTO -->|ciclo TT2<br>(pedido / estoque)| TT2
 
     %% Feedback de sensores
     TT1 -->|limites / fim de produção| SRV
-    TT2 -->|load/discharge / fim| SRV
+    TT2 -->|load / discharge| SRV
 
     %% Estados globais
-    SRV <--> |machine_state, sequence_step| AUTO
+    SRV <--> |machine_state<br>sequence_step| AUTO
 ```
 
 > **Leitura do diagrama:**
