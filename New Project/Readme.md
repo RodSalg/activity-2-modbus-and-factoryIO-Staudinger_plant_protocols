@@ -4,56 +4,46 @@ Abaixo está um fluxograma **Mermaid** que representa o caminho completo do sina
 
 ```mermaid
 flowchart LR
-    %% Origem dos eventos
     subgraph Origem
-      RF[RandomFeeder<br>(simulador de peças)]
-      HW[Sensores / Botões<br>(Modbus Coils)]
+      RF[RandomFeeder]
+      HW[Sensores e Botoes]
     end
 
-    %% Servidor
     subgraph Servidor_Modbus
-      EV[EventProcessor<br>events.py]
-      SRV[FactoryModbusEventServer<br>server.py]
+      EV[EventProcessor events.py]
+      SRV[FactoryModbusEventServer server.py]
     end
 
-    %% Controle de alto nível
-    subgraph Controle_Automático
-      AUTO[AutoController<br>auto.py]
-      ORD[OrderManager<br>orders.py]
+    subgraph Controle_Automatico
+      AUTO[AutoController auto.py]
+      ORD[OrderManager orders.py]
     end
 
-    %% Acionamentos físicos
     subgraph Acionamentos
-      LINES[LineController<br>lines.py]
-      TT1[Turntable 1<br>(giro + esteira interna)]
-      TT2[Turntable 2<br>(load / discharge)]
+      LINES[LineController lines.py]
+      TT1[Turntable 1]
+      TT2[Turntable 2]
     end
 
-    %% Conexões de origem → servidor
-    RF -->|pulsos Inputs.*| SRV
-    HW -->|leitura de coils| SRV
+    RF -->|Inputs| SRV
+    HW -->|Coils| SRV
 
-    %% Loop de eventos
-    SRV -->|polling periódico| EV
-    EV -->|bordas detectadas:<br>Start / Stop / Emergency / Restart| SRV
-    EV -->|detecção de chegada + HAL| AUTO
+    SRV -->|polling| EV
+    EV -->|bordas Start Stop Emergency Restart| SRV
+    EV -->|chegada e HAL| AUTO
 
-    %% Decisão automática
-    AUTO -->|set_turntable_async()| LINES
-    AUTO -->|hal_sequence()| AUTO
-    AUTO -->|on_hal_classified()<br>(NO_ORDER / ORDER)| AUTO
-    AUTO <-->|consulta / consumo| ORD
+    AUTO -->|turntable async| LINES
+    AUTO -->|hal sequence| AUTO
+    AUTO -->|classificacao| AUTO
+    AUTO <-->|consulta pedidos| ORD
 
-    %% Acionamento físico
-    LINES -->|comandos TT1<br>(giro, belt)| TT1
-    AUTO -->|ciclo TT2<br>(pedido / estoque)| TT2
+    LINES --> TT1
+    AUTO --> TT2
 
-    %% Feedback de sensores
-    TT1 -->|limites / fim de produção| SRV
-    TT2 -->|load / discharge| SRV
+    TT1 --> SRV
+    TT2 --> SRV
 
-    %% Estados globais
-    SRV <--> |machine_state<br>sequence_step| AUTO
+    SRV <--> AUTO
 ```
 
 > **Leitura do diagrama:**
