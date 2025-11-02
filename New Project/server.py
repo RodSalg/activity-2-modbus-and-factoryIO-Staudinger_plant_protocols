@@ -87,9 +87,9 @@ class FactoryModbusEventServer(Stoppable):
         return bool(val and val[0])
 
     def set_actuator(self, coil_address: int, value: bool) -> None:
-        print(
-            f"[DEBUG ACTUATOR] {coil_address} <= {value}  (chamado por {inspect.stack()[1].function})"
-        )
+        # print(
+        #     f"[DEBUG ACTUATOR] {coil_address} <= {value}  (chamado por {inspect.stack()[1].function})"
+        # )
         db = self._db()
         db.set_discrete_inputs(coil_address, [int(value)])
 

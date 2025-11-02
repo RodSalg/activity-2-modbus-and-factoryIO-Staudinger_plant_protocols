@@ -7,6 +7,7 @@ class Coils:
     Start = 24
     Stop = 26
     RestartButton = 25
+    Create_OP = 28
 
     resetButton = 27
 
@@ -20,19 +21,19 @@ class Coils:
     Sensor_2_Caixote_Vazio = 84
 
     Turntable1_FrontLimit = 95
-    Turntable1_BackLimit  = 94
+    Turntable1_BackLimit = 94
 
     Sensor_Final_Producao = 86
 
-    Vision_Blue           = 88
-    Vision_Green          = 89
-    Sensor_Hall           = 90
+    Vision_Blue  = 88
+    Vision_Green = 89
+    Sensor_Hall  = 90
 
-    Load_Sensor           = 96
-    Discharg_Sensor       = 97
+    Load_Sensor = 96
+    Discharg_Sensor = 97
 
-    Sensor_Write          = 10
-    Emitter_Blue_Button   = 26
+    Sensor_Write = 10
+    Emitter_Blue_Button = 26
 
 
 class Inputs:
@@ -43,6 +44,7 @@ class Inputs:
     EntryConveyor = 10
 
     Esteira_Estoque = 14
+    Esteira_Central = 15
 
     Esteira_Producao_1 = 30
     Esteira_Freio_Sensor = 31
@@ -90,7 +92,7 @@ class Esteiras(IntEnum):
     Caixote_Azul_Esteira_1 = 82
     Caixote_Azul_Esteira_2 = 83
 
-    Emmiter_Caixote_Vazio   = 22
+    Emmiter_Caixote_Vazio = 22
     Caixote_Vazio_Esteira_1 = 84
     Caixote_Vazio_Esteira_2 = 85
     Caixote_Vazio_Esteira_3 = 86
@@ -106,6 +108,6 @@ class Esteiras(IntEnum):
     Turntable1_Esteira_EntradaSaida = 94
     Turntable1_Esteira_SaidaEntrada = 95
 
-    Turntable2_turn                 = 38
-    Load_turn                       = 39
-    Discharg_turn                   = 40
+    Turntable2_turn = 38
+    Load_turn = 39
+    Discharg_turn = 40

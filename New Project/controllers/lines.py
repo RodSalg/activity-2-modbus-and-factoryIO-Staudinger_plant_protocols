@@ -36,8 +36,8 @@ class LineController:
     def run_blue_line(self):
         if self.server.machine_state != "running":
             return
-        if self.verbose:
-            print("ligando linha azul")
+        # if self.verbose:
+        #     print("ligando linha azul")
 
         threading.Thread(
             target=self._t_run_blue_line, name="TRUN-BlueLine", daemon=True
@@ -74,8 +74,8 @@ class LineController:
     def run_green_line(self):
         if self.server.machine_state != "running":
             return
-        if self.verbose:
-            print("ligando linha verde")
+        # if self.verbose:
+        #     print("ligando linha verde")
         threading.Thread(
             target=self._t_run_green_line, name="TRUN-GreenLine", daemon=True
         ).start()
@@ -118,8 +118,8 @@ class LineController:
     def run_empty_line(self):
         if self.server.machine_state != "running":
             return
-        if self.verbose:
-            print("ligando linha vazio")
+        # if self.verbose:
+        #     print("ligando linha vazio")
         threading.Thread(
             target=self._t_run_empty_line, name="TRUN-EmptyLine", daemon=True
         ).start()
@@ -162,8 +162,8 @@ class LineController:
     def run_production_line(self):
         if self.server.machine_state != "running":
             return
-        if self.verbose:
-            print("ligando linha produção")
+        # if self.verbose:
+        #     print("ligando linha produção")
         threading.Thread(
             target=self._t_run_production_line, name="TRUN-ProductionLine", daemon=True
         ).start()
@@ -184,10 +184,7 @@ class LineController:
             self._production_running = True
         try:
 
-            self._activate(
-                Inputs.Esteira_Producao_1,
-                Inputs.Esteira_Producao_2
-            )
+            self._activate(Inputs.Esteira_Producao_1, Inputs.Esteira_Producao_2)
 
         finally:
             pass
@@ -203,8 +200,6 @@ class LineController:
     def is_production_running(self, color: str) -> bool:
         with self._lock:
             return self._production_running
-
-
 
     # ========== Turntable Unified (ON/OFF + Belt) ==========
     def set_turntable_async(
@@ -456,3 +451,112 @@ class LineController:
             time.sleep(0.02)
 
         self._belt_watching = False
+
+    # =============== [ADD] API da TT2 (paralela à da TT1) ===============
+    def set_turntable2_async(
+        self,
+        turn_on: bool | None,
+        belt: str = "none",  # "forward" | "backward" | "stop"/"none"
+        stop_limit: str | None = None,  # "front" | "back" | None
+        belt_timeout_s: float = 1.0,
+    ):
+        if self.server.machine_state != "running":
+            return
+        threading.Thread(
+            target=self._t2_set_turntable,
+            args=(turn_on, (belt or "none").lower(), stop_limit, belt_timeout_s),
+            name=f"TRUN-TT2-{turn_on}-{belt}-{stop_limit}",
+            daemon=True,
+        ).start()
+
+    def _t2_set_turntable(
+        self,
+        turn_on: bool | None,
+        belt: str,
+        stop_limit: str | None,
+        belt_timeout_s: float,
+    ):
+        # ----- ENDEREÇOS TT2 -----
+        TURN_COIL = Inputs.Turntable2_turn
+
+        # Ajuste se você tiver FWD/REV separados na TT2:
+        BELT_FWD = (
+            Inputs.Discharg_turn
+            if hasattr(Inputs, "Turntable2_Esteira_SaidaEntrada")
+            else Inputs.Discharg_turn
+        )
+        BELT_REV = (
+            Inputs.Load_turn
+            if hasattr(Inputs, "Turntable2_Esteira_EntradaSaida")
+            else Inputs.Load_turn
+        )
+
+        # --- gira (se pedido) ---
+        with self._lock:
+            if turn_on is True:
+                self.server.set_actuator(TURN_COIL, True)
+                self._turntable2_turn = True
+            elif turn_on is False:
+                self.server.set_actuator(TURN_COIL, False)
+                self._turntable2_turn = False
+
+        # --- belt interno ---
+        belt_to_watch = None
+        if belt == "forward":
+            try:
+                self.server.set_actuator(BELT_REV, False)
+            except Exception:
+                pass
+            self.server.set_actuator(BELT_FWD, True)
+            with self._lock:
+                self._turntable2_belt = "forward"
+            belt_to_watch = "forward"
+
+        elif belt == "backward":
+            try:
+                self.server.set_actuator(BELT_FWD, False)
+            except Exception:
+                pass
+            self.server.set_actuator(BELT_REV, True)
+            with self._lock:
+                self._turntable2_belt = "backward"
+            belt_to_watch = "backward"
+
+        elif belt in ("stop", "none"):
+            self.server.set_actuator(BELT_FWD, False)
+            try:
+                self.server.set_actuator(BELT_REV, False)
+            except Exception:
+                pass
+            with self._lock:
+                self._turntable2_belt = "stop"
+            belt_to_watch = None
+
+        # --- watcher dos limites da TT2 ---
+        if stop_limit is None or belt_to_watch is None:
+            self._stop_belt_watcher()
+            if self.verbose:
+                print(
+                    f"[tt2] turn_on={turn_on} belt={belt} -> turn={getattr(self,'_turntable2_turn',None)} belt_state={getattr(self,'_turntable2_belt',None)}"
+                )
+            return
+
+        if stop_limit.lower() == "front":
+            limit_addr = Coils.Turntable2_FrontLimit
+        elif stop_limit.lower() == "back":
+            limit_addr = Coils.Turntable2_BackLimit
+        else:
+            if self.verbose:
+                print(f"[tt2] stop_limit inválido: {stop_limit}")
+            self._stop_belt_watcher()
+            return
+
+        self._start_belt_watcher(
+            direction=belt_to_watch, limit_addr=limit_addr, timeout_s=belt_timeout_s
+        )
+        if self.verbose:
+            print(
+                f"[tt2] turn_on={turn_on} belt={belt} stop_limit={stop_limit} -> turn={getattr(self,'_turntable2_turn',None)} belt_state={getattr(self,'_turntable2_belt',None)}"
+            )
+
+    # =============== [END ADD] ===============

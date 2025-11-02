@@ -18,7 +18,6 @@ class AutoController:
 
         self.lines = self.server.lines
 
-        # >>> ADICIONE ESTAS LINHAS <<<
         self.turntable_busy = False
         self.active_job = None
 
@@ -26,18 +25,23 @@ class AutoController:
         self._pending_enq = set()  # guarda sensor_addr em atraso
         self._hal_busy = False
 
-        # ======= Turntable 2 e Pedidos =======
         self.orders = OrderManager()  # gerencia pedidos A/B
 
         self.tt2_q: Queue[str] = Queue()  # fila própria da turntable 2
         self._tt2_worker_th = None
         self.turntable2_busy = False
 
-        # Tempos e timeouts (ajuste conforme Factory I/O)
         self.TT2_GIRO_S = 1.6
         self.TT2_RETORNO_S = 1.6
         self.TT2_ENTRADA_TOUT = 8.0
         self.TT2_SAIDA_TOUT = 10.0
+
+        self._stop_event = threading.Event()
+        self.running = False                
+        self._tt2_thread = None              # handler da thread da TT2
+
+        self._hal_prev = False
+        self._hal_inhibit = False
 
     def join(self, timeout=2.0):
         if self._thread and self._thread.is_alive():
@@ -46,17 +50,20 @@ class AutoController:
             self._arrival_worker_th.join(timeout)
 
     def start(self):
+        self._stop_event.clear()
+        self.running = True
+
         if self._thread and self._thread.is_alive():
             return
         self._thread = threading.Thread(
             target=self._auto_cycle, name="auto-cycle", daemon=True
         )
 
-        if not self._tt2_worker_th or not self._tt2_worker_th.is_alive():
-            self._tt2_worker_th = threading.Thread(
+        if not self._tt2_thread or not self._tt2_thread.is_alive():
+            self._tt2_thread = threading.Thread(
                 target=self._tt2_worker, name="tt2-worker", daemon=True
             )
-            self._tt2_worker_th.start()
+            self._tt2_thread.start()
 
         self._thread.start()
 
@@ -76,36 +83,48 @@ class AutoController:
 
     def stop(self, join_timeout: float = 2.0):
         """Para o consumidor da fila e aguarda as threads finalizarem."""
+        self.running = False
+        self._stop_event.set()
+        # desbloqueia o get() do worker
         try:
-            # Envia sentinela para destravar o arrival_worker
-            self.arrival_q.put(("__HALT__", -1))
-            self.tt2_q.put("__HALT__")  # <<< adiciona essa linha
+            self.tt2_q.put_nowait(None)
         except Exception:
             pass
-        self.join(timeout=join_timeout)
+        # junte o worker
+        if self._tt2_thread:
+            self._tt2_thread.join(timeout=3.0)
+            self._tt2_thread = None
 
     def _read(self, coil_enum):
         """Helper simples para ler coil/sensor (True/False)"""
         try:
-            return bool(self.server.get_sensor(coil_enum.value))
+            return bool(self.server.get_sensor(coil_enum))
         except Exception:
             return False
 
-    # <<< OPCIONAL: implemente o que fazer com a classificação >>>
-    def on_hal_classified(self, klass: str):
-        # Se NÃO houver pedido -> TT2 ciclo padrão
+    def on_hal_classified(self, klass: str) -> None:
+        """
+        Se o classificado atende o primeiro pedido aberto -> ORDER (descarga direta na Central).
+        Caso contrário -> NO_ORDER (gira TT2 + Estoque).
+        """
         try:
-            no_orders = not self.orders.has_pending()
+            has_orders = self.orders and self.orders.has_pending()
+            is_order   = has_orders and self.orders.can_fulfill(klass)
         except Exception:
-            no_orders = True  # fallback (se orders não tiver has_pending)
+            has_orders = False
+            is_order   = False
 
-        if no_orders:
+        if is_order:
+            # atende pedido AGORA (sem girar)
+            self.tt2_q.put(("ORDER", klass))
+            if self.verbose:
+                print(f"[HAL] classificado (pedido): {klass} -> atender agora na Central")
+        else:
+            # fluxo padrão (sem pedido ou cor errada) -> Estoque
             self.tt2_q.put("NO_ORDER")
             if self.verbose:
-                print("[HAL] sem pedido -> enfileirando ciclo padrão Turntable2")
-        else:
-            if self.verbose:
-                print("[HAL] há pedidos -> fluxo por destino (A/B)")
+                motivo = "sem pedido" if not has_orders else f"cor não atende ({klass})"
+                print(f"[HAL] classificado (não pedido): {klass} -> {motivo}, enfileirando NO_ORDER")
 
     # chamado pelos EVENTS (no edge do Sensor_2)
     def enqueue_arrival(self, tipo: str, sensor_addr: int):
@@ -138,7 +157,9 @@ class AutoController:
         t.start()
 
     def enqueue_hal(self, sensor_addr: int) -> None:
-        self.arrival_q.put(("HAL", sensor_addr))
+        # Só enfileira se não estiver inibido, evitando ricochetes por nível
+        if not getattr(self, "_hal_inhibit", False):
+            self.arrival_q.put(("HAL", sensor_addr))
 
     def _arrival_worker(self):
         stop_evt = getattr(self.server, "_stop_evt", None)
@@ -182,21 +203,28 @@ class AutoController:
                 break
 
             if tipo == "HAL":
-                if self.server.verbose:
-                    print("[arrival] HAL -> parar Esteira_Producao_2 e classificar")
+                # Inibe novas HAL durante a janela de classificação
+                self._hal_inhibit = True
+                try:
+                    if self.server.verbose:
+                        print("[arrival] HAL -> parar Esteira_Producao_2 e classificar (inibido)")
 
-                # 1) Para esteira produção 2 imediatamente
-                self.server.set_actuator(Inputs.Esteira_Producao_2, False)
+                    # 1) Para a esteira de produção 2 uma única vez
+                    self.server.set_actuator(Inputs.Esteira_Producao_2, False)
+                    time.sleep(0.05)
 
-                # 2) Executa a rotina de classificação (aguarda resultado)
-                result = self.hal_sequence()
+                    # 2) Roda a janela de classificação (sua função atual)
+                    result = self.hal_sequence()
 
-                # 3) Após classificar (seja azul, verde ou vazio), religa a esteira
-                if self.server.verbose:
-                    print(
-                        f"[HAL] classificação concluída ({result}), religando Esteira_Producao_2"
-                    )
-                self.server.set_actuator(Inputs.Esteira_Producao_2, True)
+                    # 3) Religa a esteira ao final da janela
+                    if self.server.verbose:
+                        print(f"[HAL] classificação concluída ({result}), religando Esteira_Producao_2")
+                    self.server.set_actuator(Inputs.Esteira_Producao_2, True)
+                    # time.sleep(0.12)
+                    # self.server.set_actuator(Inputs.Esteira_Producao_2, False)
+                finally:
+                    # Libera novas bordas de HAL
+                    self._hal_inhibit = False
 
                 self.arrival_q.task_done()
                 continue
@@ -333,7 +361,9 @@ class AutoController:
             belt_timeout_s=1.0,  # pode ajustar; 1.0–1.2 costuma ir bem
         )  # exemplo indicativo
 
-        self.lines._activate(Inputs.Esteira_Producao_2, Inputs.Esteira_Estoque)  # já liga produção final
+        self.lines._activate(
+            Inputs.Esteira_Producao_2, Inputs.Esteira_Estoque
+        )  # já liga produção final
 
         self.lines.set_turntable_async(turn_on=None, belt="forward", stop_limit=None)
 
@@ -356,34 +386,46 @@ class AutoController:
         self.turntable_busy = False
 
     # ========== HAL Sequence ==========
-    def hal_sequence(self, window_ms: int = 300, debounce: int = 2):
+    def hal_sequence(self, window_ms: int = 700, debounce: int = 2,
+                    align_ms: int = 180, sample_while_running: bool = False):
         """
-        Janela de decisão após HAL=1:
-          - Para Esteira_Producao_2 imediatamente
-          - Observa Vision_Blue e Vision_Green por 'window_ms'
-          - Se azul ≥ debounce -> BLUE
-            senão, se verde ≥ debounce -> GREEN
-            senão -> EMPTY
+        Fluxo:
+        1) HAL=1 -> (opção A) mantém a esteira rodando por align_ms p/ posicionar
+            (opção B) se preferir, para e dá um pulso curto (nudge) — ver mais abaixo.
+        2) Para Esteira_Producao_2
+        3) Amostra Vision_Blue/Green por window_ms (10 ms step)
         """
         if self._hal_busy:
             return
         self._hal_busy = True
         try:
-            print("[HAL] sequence: parando Esteira_Producao_2 e abrindo janela…")
-            self.server.set_actuator(Inputs.Esteira_Producao_2, False)
+            print("[HAL] sequence: alinhando e abrindo janela…")
 
-            t_end = time.time() + (window_ms / 1000.0)
-            seen_blue = 0
-            seen_green = 0
+            # (A) manter rodando um pouco para posicionar
+            if sample_while_running:
+                # opção: amostrar enquanto ainda está rodando
+                t_end = time.time() + (window_ms / 1000.0)
+                seen_blue = seen_green = 0
+                while time.time() < t_end and self.server.machine_state == "running":
+                    if self._read(Coils.Vision_Blue):  seen_blue += 1
+                    if self._read(Coils.Vision_Green): seen_green += 1
+                    time.sleep(0.01)
+                # depois para a esteira
+                self.server.set_actuator(Inputs.Esteira_Producao_2, False)
+            else:
+                # manter rodando 'align_ms' para a peça entrar debaixo da câmera
+                time.sleep(align_ms / 1000.0)
+                # agora para a esteira e amostra com peça parada
+                self.server.set_actuator(Inputs.Esteira_Producao_2, False)
 
-            # amostragem rápida com “debounce” por contagem
-            while time.time() < t_end and self.server.machine_state == "running":
-                if self._read(Coils.Vision_Blue):
-                    seen_blue += 1
-                if self._read(Coils.Vision_Green):
-                    seen_green += 1
-                time.sleep(0.01)  # 10ms
+                t_end = time.time() + (window_ms / 1000.0)
+                seen_blue = seen_green = 0
+                while time.time() < t_end and self.server.machine_state == "running":
+                    if self._read(Coils.Vision_Blue):  seen_blue += 1
+                    if self._read(Coils.Vision_Green): seen_green += 1
+                    time.sleep(0.01)
 
+            # decisão com debounce
             if seen_blue >= debounce:
                 klass = "BLUE"
             elif seen_green >= debounce:
@@ -392,33 +434,28 @@ class AutoController:
                 klass = "EMPTY"
 
             print(f"[HAL] classificado: {klass} (blue={seen_blue}, green={seen_green})")
-
-            # gancho para sua lógica pós-classificação
             self.on_hal_classified(klass)
+
         finally:
             self._hal_busy = False
 
         # ========== TURN TABLE 2 ==========
 
     def _tt2_worker(self):
-        stop_evt = getattr(self.server, "_stop_evt", None)
-        while not (stop_evt and stop_evt.is_set()):
+        while not self._stop_event.is_set():
             job = self.tt2_q.get()
-            if job == "__HALT__":
+            if job is None:   # sentinela para encerrar
                 self.tt2_q.task_done()
                 break
-
-            # aguarda mesa ficar livre
-            while self.turntable2_busy and not (stop_evt and stop_evt.is_set()):
-                time.sleep(0.01)
-
-            self.turntable2_busy = True
             try:
-                if job == "NO_ORDER":
+                if isinstance(job, tuple) and job[0] == "ORDER":
+                    _, klass = job
+                    self._tt2_cycle_order(klass)
+                elif job == "NO_ORDER":
                     self._tt2_cycle_no_order()
             finally:
-                self.turntable2_busy = False
                 self.tt2_q.task_done()
+
 
     def _tt2_cycle_no_order(self):
         """
@@ -464,18 +501,29 @@ class AutoController:
             print("[TT2] ciclo padrão concluído.")
 
     def _arm_tt2_if_idle(self, motivo: str):
-        if not self.turntable2_busy:
-            self.tt2_q.put("NO_ORDER")
+        # não arma se já estiver ocupada
+        if self.turntable2_busy:
+            return
+        # não arma se houver pedido pendente
+        try:
+            if self.orders and self.orders.has_pending():
+                if self.verbose:
+                    print("[TT2] arming BLOQUEADO (pedido pendente)")
+                return
+        except Exception:
             if self.verbose:
-                print(f"[TT2] armado via {motivo} -> enfileirado NO_ORDER")
+                print("[TT2] arming BLOQUEADO (erro ao checar pedidos)")
+            return
 
-    # auto.py (dentro de AutoController)
+        # se chegou aqui, arma NO_ORDER
+        self.tt2_q.put("NO_ORDER")
+        if self.verbose:
+            print(f"[TT2] armado via {motivo} -> enfileirado NO_ORDER")
 
     def arm_tt2_if_idle(self, motivo: str = "Load_Sensor"):
-        """Arma o ciclo padrão da TT2 se ela não estiver ocupada."""
+        """Arma o ciclo padrão da TT2 se ela não estiver ocupada e não houver pedido."""
         return self._arm_tt2_if_idle(motivo)
 
-    # Mantém a esteira de estoque ligada; não há desligamento automático aqui
     def _start_stock_belt(self):
         # Substitua Inputs.Esteira_Estoque pelo enum/ID que você usa de fato
         self._activate(Inputs.Esteira_Estoque)
@@ -484,3 +532,73 @@ class AutoController:
 
     def start_stock_belt(self):
         return self._start_stock_belt()
+
+    def _read_coil_safe(self, addr: int) -> int:
+        try:
+            return 1 if self.server.read_coil(addr) else 0
+        except Exception:
+            return 0
+
+    def _wait_discharge_true_then_false(
+        self, sensor_addr: int, timeout_s: float = 4.0
+    ) -> bool:
+        t0 = time.time()
+        # aguarda subir (True)
+        while time.time() - t0 < timeout_s:
+            if self._read_coil_safe(sensor_addr):
+                break
+            time.sleep(0.02)
+        else:
+            if self.verbose:
+                print("[ORDER] timeout aguardando Discharg_Sensor=1")
+            return False
+        # aguarda descer (False)
+        while time.time() - t0 < timeout_s:
+            if not self._read_coil_safe(sensor_addr):
+                if self.verbose:
+                    print("[ORDER] Discharg_Sensor ciclo True→False OK")
+                return True
+            time.sleep(0.02)
+        if self.verbose:
+            print("[ORDER] timeout aguardando Discharg_Sensor voltar a 0")
+        return False
+
+    def _tt2_cycle_order(self, klass: str, *, belt_timeout_s: float = 3.0):
+        if self.verbose:
+            print(f"[TT2][ORDER] atendendo {klass}: discharge direto (sem giro)")
+
+        self.turntable2_busy = True
+        try:
+
+            self.lines._t2_set_turntable(
+                turn_on=None,          # sem giro
+                belt="forward",        # descarregar para esteira central
+                stop_limit=None,       # sem limite, pois não tem giro
+                belt_timeout_s=1.5     # tempo até detectar Sensor_Discharge (ou timeout)
+            )
+
+            # destino do pedido: Esteira_Central (CONFIRA o ID no addresses.py)
+            self.lines._activate(Inputs.Esteira_Central)
+
+            # aguarda Discharg_Sensor subir e cair (true -> false)
+            was_high = False
+            t0 = time.time()
+            while time.time() - t0 < belt_timeout_s and self.server.machine_state == "running":
+                val = self.lines._read(Coils.Discharg_Sensor)
+                if val:
+                    was_high = True
+                elif was_high and not val:
+                    break
+                time.sleep(0.01)
+
+            # para belt interno
+            self.lines._t2_set_turntable(turn_on=None, belt="stop")
+
+            # baixa no pedido
+            if self.orders:
+                self.orders.consume(klass)
+
+            if self.verbose:
+                print("[TT2][ORDER] concluído.")
+        finally:
+            self.turntable2_busy = False
