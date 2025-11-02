@@ -3,8 +3,11 @@ from typing import Callable, Dict, List
 from addresses import Coils, Inputs
 
 DEFAULT_ORDER_COUNT  = 1      # "Quantos pedidos?"
-DEFAULT_ORDER_COLOR  = "BLUE" # "BLUE" | "GREEN" | "EMPTY"
-DEFAULT_ORDER_BOXES  = 3      # "Quantidade de caixas"
+DEFAULT_ORDER_COLOR  = "GREEN" # "BLUE" | "GREEN" | "EMPTY"
+DEFAULT_ORDER_BOXES  = 5      # "Quantidade de caixas"
+DEFAULT_ORDER_RESOURCE  = 5      # "Quantidade de caixas"
+DEFAULT_ORDER_CLIENT = "RAFAEL LTDA."
+
 
 class EventProcessor:
     """
@@ -21,6 +24,8 @@ class EventProcessor:
         self._hal_prev = 0
 
     def handle_scan(self, coils_snapshot: List[int]) -> None:
+
+                
         # Sensores que verificam a presença de caixotes no emmiter
         self._handle_edge(
             Coils.Sensor_1_Caixote_Azul,
@@ -67,6 +72,8 @@ class EventProcessor:
             coils_snapshot,
             lambda: self.server.auto.arm_tt2_if_idle("Load_Sensor"),
         )
+
+        
 
         self._handle_edge(Coils.Create_OP, coils_snapshot, self._on_create_op)
 
