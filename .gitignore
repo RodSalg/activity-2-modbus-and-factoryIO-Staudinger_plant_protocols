@@ -22,9 +22,10 @@ var/
 wheels/
 share/python-wheels/
 *.egg-info/
-.installed.cfg
+.installed.cfgw
 *.egg
 MANIFEST
+env-factoryIO-modbus
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
