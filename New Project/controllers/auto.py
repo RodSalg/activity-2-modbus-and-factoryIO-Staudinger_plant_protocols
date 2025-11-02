@@ -1,7 +1,7 @@
 # auto.py
 from queue import Queue
 import threading, time
-from addresses import Coils
+from addresses import Coils, Inputs
 
 
 class AutoController:
@@ -23,6 +23,7 @@ class AutoController:
 
         self._pending_lock = threading.Lock()
         self._pending_enq = set()  # guarda sensor_addr em atraso
+        self._hal_busy = False
 
     def join(self, timeout=2.0):
         if self._thread and self._thread.is_alive():
@@ -44,6 +45,30 @@ class AutoController:
                 target=self._arrival_worker, name="arrival-worker", daemon=True
             )
             self._arrival_worker_th.start()
+
+    def stop(self, join_timeout: float = 2.0):
+        """Para o consumidor da fila e aguarda as threads finalizarem."""
+        try:
+            # Envia sentinela para destravar o arrival_worker
+            self.arrival_q.put(("__HALT__", -1))
+        except Exception:
+            pass
+        # Não dependemos do auto-cycle parar (ele é daemon).
+        self.join(timeout=join_timeout)
+
+    def _read(self, coil_enum):
+        """ Helper simples para ler coil/sensor (True/False)"""
+        try:
+            return bool(self.server.get_sensor(coil_enum.value))
+        except Exception:
+            return False
+
+    # <<< OPCIONAL: implemente o que fazer com a classificação >>>
+    def on_hal_classified(self, klass: str):
+        """
+        Substitua pelo seu fluxo (ex.: enfileirar, acionar desvios, log, etc.)
+        """
+        pass
 
     # chamado pelos EVENTS (no edge do Sensor_2)
     def enqueue_arrival(self, tipo: str, sensor_addr: int):
@@ -75,6 +100,9 @@ class AutoController:
         t.daemon = True
         t.start()
 
+    def enqueue_hal(self, sensor_addr: int) -> None:
+        self.arrival_q.put(("HAL", sensor_addr))
+
     def _arrival_worker(self):
         stop_evt = getattr(self.server, "_stop_evt", None)
 
@@ -86,8 +114,8 @@ class AutoController:
                 "stop_limit": "back",
                 "belt_tout": 3.0,
                 "feed_delay": 0.8,
-                "return_time": 6.0,
-                "exit_timeout": 6.0,
+                "return_time": 8.0,
+                "exit_timeout": 100.0,
             },
             "green": {
                 "turn": True,
@@ -95,8 +123,8 @@ class AutoController:
                 "stop_limit": "back",
                 "belt_tout": 3.0,
                 "feed_delay": 1.0,
-                "return_time": 6.0,
-                "exit_timeout": 6.0,
+                "return_time": 8.0,
+                "exit_timeout": 100.0,
             },
             "empty": {
                 "turn": True,
@@ -104,13 +132,29 @@ class AutoController:
                 "stop_limit": "front",
                 "belt_tout": 3.0,
                 "feed_delay": 1.0,
-                "return_time": 6.0,
-                "exit_timeout": 6.0,
+                "return_time": 8.0,
+                "exit_timeout": 100.0,
             },
         }
 
         while not (stop_evt and stop_evt.is_set()):
             tipo, sensor_addr = self.arrival_q.get()
+
+            if tipo == "__HALT__":
+                self.arrival_q.task_done()
+                break
+
+            if tipo == "HAL":
+                if self.server.verbose:
+                    print("[arrival] HAL -> parar Esteira_Producao_2 e classificar")
+                # 1) Para esteira produção 2 imediatamente
+                self.server.set_actuator(Inputs.Esteira_Producao_2, False)
+
+                # 2) Executa a rotina de classificação (sem abrir nova thread aqui)
+                #    hal_sequence deve cuidar de ler sensores de cor (ex: BLUE/GREEN),
+                #    aguardar a janela de tempo e decidir vazio se nada acionar.
+                self.hal_sequence()
+                continue
 
             # espere a mesa estar livre
             while self.turntable_busy and not (stop_evt and stop_evt.is_set()):
@@ -240,7 +284,7 @@ class AutoController:
         self.lines.set_turntable_async(turn_on=None, belt="forward", stop_limit=None)
 
         # 4) espera saída na produção (ou timeout)
-        exit_tout = policy.get("exit_timeout", 6.0)
+        exit_tout = policy.get("exit_timeout", 100.0)
         t0 = time.time()
         while (
             not self.server.get_sensor(Coils.Sensor_Final_Producao)
@@ -256,3 +300,46 @@ class AutoController:
         self.lines.turntable_belt_stop()
         self.lines.run_production_line()
         self.turntable_busy = False
+
+    # ========== HAL Sequence ==========
+    def hal_sequence(self, window_ms: int = 300, debounce: int = 2):
+        """
+        Janela de decisão após HAL=1:
+          - Para Esteira_Producao_2 imediatamente
+          - Observa HAL_BLUE_DETECT e HAL_GREEN_DETECT por 'window_ms'
+          - Se azul ≥ debounce -> BLUE
+            senão, se verde ≥ debounce -> GREEN
+            senão -> EMPTY
+        """
+        if self._hal_busy:
+            return
+        self._hal_busy = True
+        try:
+            print("[HAL] sequence: parando Esteira_Producao_2 e abrindo janela…")
+            self.server.set_actuator(Inputs.Esteira_Producao_2, False)
+
+            t_end = time.time() + (window_ms / 1000.0)
+            seen_blue = 0
+            seen_green = 0
+
+            # amostragem rápida com “debounce” por contagem
+            while time.time() < t_end and self.server.machine_state == "running":
+                if self._read(Coils.Vision_Blue):
+                    seen_blue += 1
+                if self._read(Coils.Vision_Green):
+                    seen_green += 1
+                time.sleep(0.01)  # 10ms
+
+            if seen_blue >= debounce:
+                klass = "BLUE"
+            elif seen_green >= debounce:
+                klass = "GREEN"
+            else:
+                klass = "EMPTY"
+
+            print(f"[HAL] classificado: {klass} (blue={seen_blue}, green={seen_green})")
+
+            # gancho para sua lógica pós-classificação
+            self.on_hal_classified(klass)
+        finally:
+            self._hal_busy = False

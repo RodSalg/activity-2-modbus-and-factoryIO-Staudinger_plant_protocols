@@ -199,6 +199,13 @@ class LineController:
             with self._lock:
                 self._production_running = False
 
+    # ========== Prod Line ==========
+    def is_production_running(self, color: str) -> bool:
+        with self._lock:
+            return self._production_running
+
+
+
     # ========== Turntable Unified (ON/OFF + Belt) ==========
     def set_turntable_async(
         self,

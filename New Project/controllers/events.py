@@ -1,5 +1,5 @@
 from typing import Callable, Dict, List
-from addresses import Coils
+from addresses import Coils, Inputs
 
 class EventProcessor:
     """
@@ -11,6 +11,7 @@ class EventProcessor:
         self.lines = lines_controller
         self.verbose = verbose
         self._prev: Dict[int, int] = {}
+        self._hal_prev = False
 
     def handle_scan(self, coils_snapshot: List[int]) -> None:
         # Sensores que verificam a presença de caixotes no emmiter
@@ -34,7 +35,17 @@ class EventProcessor:
             return
         if self._handle_edge(Coils.Start, coils_snapshot, self.server._on_start):
             return
+        if self._handle_edge(Coils.Stop, coils_snapshot, self.server._on_stop):
+            return
         
+        hal_idx  = Coils.Sensor_Hall  # índice/enum do coil HAL
+        hal_now  = bool(coils_snapshot[hal_idx])
+        if hal_now and not self._hal_prev:
+            if self.server.verbose:
+                print("[HAL] detectado: enfileirando para classificação")
+            self.server.auto.enqueue_hal(hal_idx)  # mantém (tipo, sensor_addr)
+        self._hal_prev = hal_now
+
     # ---------- detecção de borda (idêntica à lógica original, com casos especiais) ----------
     def _handle_edge(self, addr: int, coils: List[int], callback: Callable[[], None]) -> bool:
         acionou = False
@@ -64,6 +75,9 @@ class EventProcessor:
                 callback()
                 acionou = True
             self._prev[addr] = cur
+
+            self.server.turntable_state1 = self.server.get_actuator(Inputs.Turntable1_Esteira_EntradaSaida)
+            self.server.turntable_state2 = self.server.get_actuator(Inputs.Turntable1_Esteira_SaidaEntrada)
             return acionou
         
         if addr == Coils.RestartButton:
