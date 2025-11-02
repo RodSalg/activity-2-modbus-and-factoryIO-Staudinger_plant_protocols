@@ -20,6 +20,7 @@ class LineController:
         self._belt_watching = False  # flag do watcher
         self.turntable_busy = False
         self.active_job = None
+        self.turntable1_busy = False
 
     # ---------------- Helpers IO ----------------
     def _activate(self, *actuators):
@@ -202,15 +203,48 @@ class LineController:
             return self._production_running
 
     # ========== Turntable Unified (ON/OFF + Belt) ==========
+    # def set_turntable_async(
+    #     self,
+    #     turn_on: bool | None,
+    #     belt: str = "none",  # "forward" | "backward" | "stop"/"none"
+    #     stop_limit: str | None = None,  # "front" | "back" | None (não vigia)
+    #     belt_timeout_s: float = 1.0,
+    # ):
+    #     if self.server.machine_state != "running":
+    #         return
+    #     threading.Thread(
+    #         target=self._t_set_turntable,
+    #         args=(turn_on, (belt or "none").lower(), stop_limit, belt_timeout_s),
+    #         name=f"TRUN-Turntable-{turn_on}-{belt}-{stop_limit}",
+    #         daemon=True,
+    #     ).start()
+
     def set_turntable_async(
         self,
         turn_on: bool | None,
-        belt: str = "none",  # "forward" | "backward" | "stop"/"none"
-        stop_limit: str | None = None,  # "front" | "back" | None (não vigia)
+        belt: str = "none",            # "forward" | "backward" | "stop"/"none"
+        stop_limit: str | None = None, # "front" | "back" | None (não vigia)
         belt_timeout_s: float = 1.0,
     ):
         if self.server.machine_state != "running":
             return
+
+        # ====== GUARDA TT1: só aceitar novo comando quando a operação anterior terminar ======
+        # Considera "ocupado" se:
+        #   - uma operação anterior marcou busy (turntable1_busy=True), ou
+        #   - o watcher da TT1 ainda está ativo (_belt_watching=True).
+        # Obs.: Se preferir não BLOQUEAR, você pode apenas "return" quando ocupado.
+        wait_deadline = time.time() + 10.0  # timeout de segurança para não travar
+        while (self.turntable1_busy or getattr(self, "_belt_watching", False)) and time.time() < wait_deadline:
+            time.sleep(0.01)
+
+        if self.turntable1_busy or getattr(self, "_belt_watching", False):
+            # Ainda ocupado após timeout, não agenda nova operação.
+            if self.verbose:
+                print("[TT1][GUARDA] ocupado (busy/watcher ativo); ignorando comando para evitar atropelo.")
+            return
+        # =====================================================================================
+
         threading.Thread(
             target=self._t_set_turntable,
             args=(turn_on, (belt or "none").lower(), stop_limit, belt_timeout_s),
@@ -241,69 +275,73 @@ class LineController:
         stop_limit: str | None,
         belt_timeout_s: float,
     ):
+        self.turntable1_busy = True
         TURN_COIL = Inputs.Turntable1_turn
         BELT_FWD = Inputs.Turntable1_Esteira_SaidaEntrada
         BELT_REV = Inputs.Turntable1_Esteira_EntradaSaida
 
-        # --- gira (se pedido) ---
-        with self._lock:
-            if turn_on is True:
-                self.server.set_actuator(TURN_COIL, True)
-                self._turntable_turn = True
-            elif turn_on is False:
-                self.server.set_actuator(TURN_COIL, False)
-                self._turntable_turn = False
+        try:
+            # --- gira (se pedido) ---
+            with self._lock:
+                if turn_on is True:
+                    self.server.set_actuator(TURN_COIL, True)
+                    self._turntable_turn = True
+                elif turn_on is False:
+                    self.server.set_actuator(TURN_COIL, False)
+                    self._turntable_turn = False
 
-        # --- belt interno ---
-        belt_to_watch = None
-        if belt == "forward":
-            self.server.set_actuator(BELT_REV, False)
-            self.server.set_actuator(BELT_FWD, True)
-            with self._lock:
-                self._turntable_belt = "forward"
-            belt_to_watch = "forward"
-        elif belt == "backward":
-            self.server.set_actuator(BELT_FWD, False)
-            self.server.set_actuator(BELT_REV, True)
-            with self._lock:
-                self._turntable_belt = "backward"
-            belt_to_watch = "backward"
-        elif belt in ("stop", "none"):
-            self.server.set_actuator(BELT_FWD, False)
-            self.server.set_actuator(BELT_REV, False)
-            with self._lock:
-                self._turntable_belt = "stop"
+            # --- belt interno ---
             belt_to_watch = None
+            if belt == "forward":
+                self.server.set_actuator(BELT_REV, False)
+                self.server.set_actuator(BELT_FWD, True)
+                with self._lock:
+                    self._turntable_belt = "forward"
+                belt_to_watch = "forward"
+            elif belt == "backward":
+                self.server.set_actuator(BELT_FWD, False)
+                self.server.set_actuator(BELT_REV, True)
+                with self._lock:
+                    self._turntable_belt = "backward"
+                belt_to_watch = "backward"
+            elif belt in ("stop", "none"):
+                self.server.set_actuator(BELT_FWD, False)
+                self.server.set_actuator(BELT_REV, False)
+                with self._lock:
+                    self._turntable_belt = "stop"
+                belt_to_watch = None
 
-        # --- watcher: escolhe o LIMITE conforme stop_limit explicitado ---
-        if stop_limit is None or belt_to_watch is None:
-            self._stop_belt_watcher()
-            if self.verbose:
-                print(
-                    f"[turntable] turn_on={turn_on} belt={belt} -> turn={getattr(self,'_turntable_turn',None)} belt_state={self._turntable_belt}"
-                )
-            return
+            # --- watcher: escolhe o LIMITE conforme stop_limit explicitado ---
+            if stop_limit is None or belt_to_watch is None:
+                self._stop_belt_watcher()
+                if self.verbose:
+                    print(
+                        f"[turntable] turn_on={turn_on} belt={belt} -> turn={getattr(self,'_turntable_turn',None)} belt_state={self._turntable_belt}"
+                    )
+                return
 
-        if stop_limit.lower() == "front":
-            limit_addr = Coils.Turntable1_FrontLimit
-        elif stop_limit.lower() == "back":
-            limit_addr = Coils.Turntable1_BackLimit
-        else:
-            if self.verbose:
-                print(
-                    f"[turntable] stop_limit inválido: {stop_limit} (esperado 'front' ou 'back'); watcher desativado."
-                )
-            self._stop_belt_watcher()
-            return
+            if stop_limit.lower() == "front":
+                limit_addr = Coils.Turntable1_FrontLimit
+            elif stop_limit.lower() == "back":
+                limit_addr = Coils.Turntable1_BackLimit
+            else:
+                if self.verbose:
+                    print(
+                        f"[turntable] stop_limit inválido: {stop_limit} (esperado 'front' ou 'back'); watcher desativado."
+                    )
+                self._stop_belt_watcher()
+                return
 
-        # inicia watcher com grace + borda + tempo mínimo
-        self._start_belt_watcher(
-            direction=belt_to_watch, limit_addr=limit_addr, timeout_s=belt_timeout_s
-        )
-        if self.verbose:
-            print(
-                f"[turntable] turn_on={turn_on} belt={belt} stop_limit={stop_limit} -> turn={getattr(self,'_turntable_turn',None)} belt_state={self._turntable_belt}"
+            # inicia watcher com grace + borda + tempo mínimo
+            self._start_belt_watcher(
+                direction=belt_to_watch, limit_addr=limit_addr, timeout_s=belt_timeout_s
             )
+            if self.verbose:
+                print(
+                    f"[turntable] turn_on={turn_on} belt={belt} stop_limit={stop_limit} -> turn={getattr(self,'_turntable_turn',None)} belt_state={self._turntable_belt}"
+                )
+        finally:
+            self.turntable1_busy = False
 
     # ---------------- watcher da esteira da mesa ----------------
     def _stop_belt_watcher(self):
