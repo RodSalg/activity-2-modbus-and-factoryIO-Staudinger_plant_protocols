@@ -75,7 +75,139 @@ class FactoryModbusEventServer(Stoppable):
         if not self._server:
             raise RuntimeError("Servidor não iniciado.")
         return self._server.data_bank
+    
+    # ------------ to registers
 
+    def read_input_register(self, address: int, count: int = 1) -> List[int]:
+        """
+        Lê Input Register(s) do banco de dados Modbus.
+        
+        Input Registers são registradores somente leitura (função 04),
+        tipicamente usados para leitura de sensores analógicos e dados de telemetria.
+        
+        Args:
+            address: Endereço inicial do Input Register (0-65535)
+            count: Número de registradores a ler (padrão: 1)
+        
+        Returns:
+            Lista de valores inteiros (16-bit unsigned) lidos
+        
+        Raises:
+            RuntimeError: Se o servidor não estiver iniciado
+            ValueError: Se address ou count forem inválidos
+        
+        Example:
+            >>> temperature = server.read_input_register(100)
+            >>> [2550]  # 25.5°C (scaled by 100)
+        """
+        if count < 1 or count > 125:
+            raise ValueError(f"Count deve estar entre 1 e 125, recebido: {count}")
+        
+        if address < 0 or address > 65535:
+            raise ValueError(f"Endereço inválido: {address}")
+        
+        db = self._db()
+        values = db.get_input_registers(address, count)
+        
+        if values is None:
+            return [0] * count
+        
+        return list(values)
+
+    def write_input_register(self, address: int, value: int) -> None:
+        """
+        Escreve valor em Input Register.
+        
+        NOTA: Input Registers são tecnicamente somente leitura no protocolo Modbus,
+        mas este método permite escrita interna para simulação de sensores ou
+        atualização de telemetria no servidor.
+        
+        Args:
+            address: Endereço do Input Register (0-65535)
+            value: Valor a escrever (0-65535, 16-bit unsigned)
+        
+        Raises:
+            RuntimeError: Se o servidor não estiver iniciado
+            ValueError: Se address ou value forem inválidos
+        
+        Example:
+            >>> server.write_input_register(100, 2550)  # Simular temperatura 25.5°C
+        """
+        if address < 0 or address > 65535:
+            raise ValueError(f"Endereço inválido: {address}")
+        
+        if value < 0 or value > 65535:
+            raise ValueError(f"Valor deve estar entre 0 e 65535, recebido: {value}")
+        
+        db = self._db()
+        with self._lock:
+            db.set_input_registers(address, [value])
+
+    def read_holding_register(self, address: int, count: int = 1) -> List[int]:
+        """
+        Lê Holding Register(s) do banco de dados Modbus (função 03).
+        
+        Permite leitura de setpoints, configurações e valores de controle.
+        
+        Args:
+            address: Endereço inicial do Holding Register (0-65535)
+            count: Número de registradores a ler (padrão: 1)
+        
+        Returns:
+            Lista de valores inteiros (16-bit unsigned) lidos
+        
+        Raises:
+            RuntimeError: Se o servidor não estiver iniciado
+            ValueError: Se address ou count forem inválidos
+        
+        Example:
+            >>> setpoint = server.read_holding_register(200)
+            >>> [3000]  # 30.0°C
+        """
+        if count < 1 or count > 125:
+            raise ValueError(f"Count deve estar entre 1 e 125, recebido: {count}")
+        
+        if address < 0 or address > 65535:
+            raise ValueError(f"Endereço inválido: {address}")
+        
+        db = self._db()
+        values = db.get_holding_registers(address, count)
+        
+        if values is None:
+            return [0] * count
+        
+        return list(values)
+
+    def write_holding_register(self, address: int, value: int) -> None:
+        """
+        Escreve valor em Holding Register (função 06/16).
+        
+        Holding Registers são registradores de leitura/escrita,
+        tipicamente usados para setpoints, configurações e controle analógico.
+        
+        Args:
+            address: Endereço do Holding Register (0-65535)
+            value: Valor a escrever (0-65535, 16-bit unsigned)
+        
+        Raises:
+            RuntimeError: Se o servidor não estiver iniciado
+            ValueError: Se address ou value forem inválidos
+        
+        Example:
+            >>> server.write_holding_register(200, 3000)  # Setpoint 30.0°C
+        """
+        if address < 0 or address > 65535:
+            raise ValueError(f"Endereço inválido: {address}")
+        
+        if value < 0 or value > 65535:
+            raise ValueError(f"Valor deve estar entre 0 e 65535, recebido: {value}")
+        
+        db = self._db()
+        with self._lock:
+            db.set_holding_registers(address, [value])
+
+    # ------------ to digital inputs and ouputs
+    
     def get_sensor(self, sensor_address: int) -> bool:
         db = self._db()
         return bool(db.get_coils(sensor_address, 1)[0])
