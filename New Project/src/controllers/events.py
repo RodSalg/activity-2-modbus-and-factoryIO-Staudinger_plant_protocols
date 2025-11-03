@@ -26,13 +26,20 @@ class EventProcessor:
 
     def handle_scan(self, coils_snapshot: List[int]) -> None:
 
+
+        # ---------------------------------------------
+        # ---------------------------------------------
+
         # ----- eventos da warehouse
 
-        self._handle_edge(
-            Coils.Sensor_1_Caixote_Verde,
-            coils_snapshot,
-            lambda: self.lines.run_green_line(),
-        )
+        # -- storage event
+        self._handle_edge( Coils.sensor_storage_warehouse, coils_snapshot, lambda: self.lines.save_on_storage_warehouse(), )
+
+        # -- client event
+        self._handle_edge(Coils.sensor_client_warehouse, coils_snapshot, lambda: self.lines.save_on_client_warehouse(), )
+
+        # ---------------------------------------------
+        # ---------------------------------------------
                 
         # Sensores que verificam a presença de caixotes no emmiter
         self._handle_edge(
