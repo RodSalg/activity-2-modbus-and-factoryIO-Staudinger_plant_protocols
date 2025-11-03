@@ -1,6 +1,8 @@
 from enum import IntEnum
 
-
+class Holding_Registers:
+    posicao_alvo = 0
+    
 class Coils:
     Emergency = 9
 
@@ -36,7 +38,10 @@ class Coils:
     Emitter_Blue_Button = 26
 
     sensor_storage_warehouse = 13
-    sensor_client_warehouse = 13
+    sensor_client_warehouse = 14
+
+    sensor_move_warehouse = 8
+
 
 
 class Inputs:
@@ -81,6 +86,10 @@ class Inputs:
 
     Emitter_Blue_Light = 27
     Vision_Sensor_0 = 97
+
+    manejador_levantar = 34
+    manejador_dentro = 35
+    manejador_fora = 36
 
 
 
