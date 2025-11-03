@@ -7,7 +7,7 @@ DEFAULT_ORDER_COUNT  = 1      # "Quantos pedidos?"
 DEFAULT_ORDER_COLOR  = "GREEN" # "BLUE" | "GREEN" | "EMPTY"
 DEFAULT_ORDER_BOXES  = 5      # "Quantidade de caixas"
 DEFAULT_ORDER_RESOURCE  = 5      # "Quantidade de caixas"
-DEFAULT_ORDER_CLIENT = "RAFAEL LTDA."
+DEFAULT_ORDER_CLIENT = "rafael_ltda"
 
 
 class EventProcessor:
