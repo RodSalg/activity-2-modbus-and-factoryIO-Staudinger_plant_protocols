@@ -78,6 +78,8 @@ class Inputs:
 
     Emitter_Blue_Light = 27
     Vision_Sensor_0 = 97
+    sensor_storage_warehouse = 13
+    sensor_client_warehouse = 13
 
 
 class Esteiras(IntEnum):
