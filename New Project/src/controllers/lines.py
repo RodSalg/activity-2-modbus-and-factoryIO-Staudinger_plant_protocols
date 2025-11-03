@@ -3,11 +3,12 @@ import time
 from addresses import Coils, Inputs
 
 from typing import TYPE_CHECKING
-from server import FactoryModbusEventServer
-    
+
+if TYPE_CHECKING:
+    from server import FactoryModbusEventServer
 
 class LineController:
-    def __init__(self, server: FactoryModbusEventServer, verbose: bool = True):
+    def __init__(self, server: "FactoryModbusEventServer", verbose: bool = True):
         self.server = server
         self.verbose = verbose
         self._blue_running = False
