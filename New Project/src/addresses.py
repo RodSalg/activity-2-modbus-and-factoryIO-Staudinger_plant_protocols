@@ -35,6 +35,9 @@ class Coils:
     Sensor_Write = 10
     Emitter_Blue_Button = 26
 
+    sensor_storage_warehouse = 13
+    sensor_client_warehouse = 13
+
 
 class Inputs:
     Running = 0
@@ -78,8 +81,7 @@ class Inputs:
 
     Emitter_Blue_Light = 27
     Vision_Sensor_0 = 97
-    sensor_storage_warehouse = 13
-    sensor_client_warehouse = 13
+
 
 
 class Esteiras(IntEnum):
