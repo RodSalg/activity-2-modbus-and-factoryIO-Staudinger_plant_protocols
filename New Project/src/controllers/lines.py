@@ -1,11 +1,321 @@
 import threading
 import time
-from addresses import Coils, Inputs
-
+from addresses import Coils, Inputs, Holding_Registers
 from typing import TYPE_CHECKING
+from typing import Optional, Dict, Tuple
 
 if TYPE_CHECKING:
     from server import FactoryModbusEventServer
+
+
+class WarehouseExtension():
+    
+    def __init__(self, verbose: bool):
+        
+        self._warehouse_lock = threading.Lock()
+        self.verbose = verbose
+
+        self.client_columns = {
+            "rafael_ltda": 1,   
+            "maria_sa": 2,
+            "joao_corp": 3,
+            "ana_ind": 4
+        }
+        
+        self.client_column_number = 1
+        self.storage_column_number = 8
+
+        self.storage_columns = [5, 6, 7, 8, 9]
+        
+        self.warehouse = {}
+        for col in range(1, 10):
+            self.warehouse[col] = {}
+            for row in range(1, 7):
+                self.warehouse[col][row] = {
+                    "occupied": False,
+                    "product_type": None,
+                    "timestamp": None,
+                    "order_id": None
+                }
+
+
+    # ================= WAREHOUSE MANAGEMENT METHODS =================
+    
+    def _calculate_position_address(self, column: int, row: int) -> int:
+        """
+        Calcula o endereço Modbus para uma posição no warehouse.
+        
+        ORIENTAÇÃO FÍSICA:
+        - Coluna 1 = mais à DIREITA
+        - Linha 1 = mais EMBAIXO
+        
+        A fórmula permanece a mesma: address = column + ((row - 1) * 9)
+        O que muda é apenas a interpretação visual.
+        
+        Args:
+            column: Número da coluna (1-9, onde 1 é a mais à direita)
+            row: Número da linha (1-6, onde 1 é a mais embaixo)
+        
+        Returns:
+            Endereço Modbus calculado
+        
+        Example:
+            >>> _calculate_position_address(1, 1)  # Direita-Baixo
+            1
+            >>> _calculate_position_address(1, 2)  # Direita-Segunda de baixo
+            10
+            >>> _calculate_position_address(9, 6)  # Esquerda-Topo
+            54
+        """
+        if not (1 <= column <= 9):
+            raise ValueError(f"Coluna deve estar entre 1 e 9, recebido: {column}")
+        
+        if not (1 <= row <= 6):
+            raise ValueError(f"Linha deve estar entre 1 e 6, recebido: {row}")
+        
+        address = column + ((row - 1) * 9)
+        
+        if self.verbose:
+            position_desc = self._get_position_description(column, row)
+            print(f"[WAREHOUSE] Posição calculada: {position_desc} -> endereço={address}")
+        
+        return address
+    
+    def _get_position_description(self, column: int, row: int) -> str:
+        """
+        Retorna descrição legível da posição física.
+        
+        Args:
+            column: Número da coluna (1-9)
+            row: Número da linha (1-6)
+        
+        Returns:
+            Descrição da posição (ex: "Coluna 1 (direita), Linha 1 (embaixo)")
+        """
+        if column == 1:
+            col_desc = "Coluna 1 (extrema direita)"
+        elif column == 9:
+            col_desc = "Coluna 9 (extrema esquerda)"
+        else:
+            col_desc = f"Coluna {column}"
+        
+        if row == 1:
+            row_desc = "Linha 1 (embaixo)"
+        elif row == 6:
+            row_desc = "Linha 6 (topo)"
+        else:
+            row_desc = f"Linha {row}"
+        
+        return f"{col_desc}, {row_desc}"
+    
+    def _find_next_available_position_in_column(self, column: int) -> Optional[int]:
+        """
+        Encontra a próxima linha disponível em uma coluna específica.
+        Começa pela Linha 1 (embaixo) e sobe.
+        
+        Args:
+            column: Número da coluna (1-9)
+        
+        Returns:
+            Número da linha disponível (1-6) ou None se coluna estiver cheia
+        """
+        for row in range(1, 7):  
+            if not self.warehouse[column][row]["occupied"]:
+                return row
+        return None
+    
+    def _find_next_available_storage_column(self) -> Optional[Tuple[int, int]]:
+        """
+        Encontra a próxima posição disponível nas colunas de storage (5-9).
+        Storage fica do lado ESQUERDO do warehouse.
+        
+        Returns:
+            Tupla (column, row) com próxima posição disponível ou None se storage estiver cheio
+        """
+        for col in self.storage_columns: 
+            row = self._find_next_available_position_in_column(col)
+            if row is not None:
+                return (col, row)
+        return None
+    
+    def _occupy_position(self, column: int, row: int, product_type: str, order_id: Optional[str] = None) -> bool:
+        """
+        Marca uma posição como ocupada no warehouse.
+        
+        Args:
+            column: Número da coluna (1-9, onde 1 é a mais à direita)
+            row: Número da linha (1-6, onde 1 é a mais embaixo)
+            product_type: Tipo do produto ("BLUE" | "GREEN")
+            order_id: ID do pedido (opcional)
+        
+        Returns:
+            True se posição foi ocupada com sucesso, False se já estava ocupada
+        """
+        if product_type not in ["BLUE", "GREEN"]:
+            raise ValueError(f"Tipo de produto inválido: {product_type}. Deve ser 'BLUE' ou 'GREEN'")
+        
+        if not (1 <= column <= 9) or not (1 <= row <= 6):
+            raise ValueError(f"Posição inválida: coluna={column}, linha={row}")
+        
+        with self._warehouse_lock:
+            if self.warehouse[column][row]["occupied"]:
+                if self.verbose:
+                    print(f"[WAREHOUSE] AVISO: Posição coluna={column} linha={row} já está ocupada")
+                return False
+            
+            self.warehouse[column][row] = {
+                "occupied": True,
+                "product_type": product_type,
+                "timestamp": time.time(),
+                "order_id": order_id
+            }
+            
+            if self.verbose:
+                pos_desc = self._get_position_description(column, row)
+                print(f"[WAREHOUSE] Posição ocupada: {pos_desc}, produto={product_type}")
+            
+            return True
+        
+    def _find_next_available_client_position(self, client_name: str) -> Optional[Tuple[int, int]]:
+        """
+        Encontra a próxima posição disponível na coluna de um cliente específico.
+        
+        Args:
+            client_name: Nome do cliente (ex: "rafael_ltda", "maria_sa", "joao_corp", "ana_ind")
+        
+        Returns:
+            Tupla (column, row) com próxima posição disponível ou None se:
+            - Cliente não existir
+            - Coluna do cliente estiver cheia
+        
+        Example:
+            >>> _find_next_available_client_position("rafael_ltda")
+            (1, 3)  # Coluna 1 (rafael_ltda), Linha 3 disponível
+            
+            >>> _find_next_available_client_position("cliente_invalido")
+            None  # Cliente não encontrado
+        """
+
+        if client_name not in self.client_columns:
+            if self.verbose:
+                print(f"[WAREHOUSE] ERRO: Cliente '{client_name}' não encontrado no mapeamento")
+                print(f"[WAREHOUSE] Clientes disponíveis: {list(self.client_columns.keys())}")
+            return None
+        
+        client_column = self.client_columns[client_name]
+        row = self._find_next_available_position_in_column(client_column)
+        
+        if row is None:
+            if self.verbose:
+                print(f"[WAREHOUSE] AVISO: Coluna do cliente '{client_name}' (col {client_column}) está cheia!")
+            return None
+        
+        if self.verbose:
+            pos_desc = self._get_position_description(client_column, row)
+            print(f"[WAREHOUSE] Próxima posição disponível para '{client_name}': {pos_desc}")
+        
+        return (client_column, row)
+    
+    def _free_position(self, column: int, row: int) -> bool:
+        """
+        Libera uma posição no warehouse.
+        
+        Args:
+            column: Número da coluna (1-9)
+            row: Número da linha (1-6)
+        
+        Returns:
+            True se posição foi liberada, False se já estava livre
+        """
+        with self._warehouse_lock:
+            if not self.warehouse[column][row]["occupied"]:
+                if self.verbose:
+                    print(f"[WAREHOUSE] AVISO: Posição coluna={column} linha={row} já está livre")
+                return False
+            
+            self.warehouse[column][row] = {
+                "occupied": False,
+                "product_type": None,
+                "timestamp": None,
+                "order_id": None
+            }
+            
+            if self.verbose:
+                pos_desc = self._get_position_description(column, row)
+                print(f"[WAREHOUSE] Posição liberada: {pos_desc}")
+            
+            return True
+    
+    def print_warehouse_map(self) -> None:
+        """
+        Imprime um mapa visual do warehouse com orientação correta.
+        
+        VISTA FRONTAL:
+        - Esquerda do mapa = Coluna 9 (esquerda física)
+        - Direita do mapa = Coluna 1 (direita física)
+        - Topo do mapa = Linha 6 (topo físico)
+        - Base do mapa = Linha 1 (base física)
+        """
+        print("\n" + "="*95)
+        print(" WAREHOUSE MAP - VISTA FRONTAL ".center(95, "="))
+        print("="*95)
+        
+        print(f"{'Posição':>10} | ", end="")
+        for c in range(9, 0, -1):
+            print(f" Col {c} ", end=" | ")
+        print()
+        
+        print(f"{'':>10} | ", end="")
+        for c in range(9, 0, -1):
+            if c in self.storage_columns:
+                print(" (Stor)", end=" | ")
+            else:
+                client_name = ""
+                for name, col_num in self.client_columns.items():
+                    if col_num == c:
+                        client_name = name[:6] 
+                        break
+                print(f" ({client_name:^6})", end=" | ")
+        print()
+        
+        print("-" * 95)
+        
+        for row in range(6, 0, -1):
+
+            if row == 6:
+                row_label = f"L{row} (topo)"
+            elif row == 1:
+                row_label = f"L{row} (base)"
+            else:
+                row_label = f"L{row}"
+            
+            print(f"{row_label:>10} | ", end="")
+            
+            for col in range(9, 0, -1):
+                pos = self.warehouse[col][row]
+                if pos["occupied"]:
+                    symbol = "B" if pos["product_type"] == "BLUE" else "G"
+                    print(f"  [{symbol}]  ", end=" | ")
+                else:
+                    print(f"  [ ]  ", end=" | ")
+            print()
+        
+        print("-" * 95)
+        
+        # Legenda
+        print("\nLEGENDA:")
+        print("  [B] = Produto BLUE  |  [G] = Produto GREEN  |  [ ] = Vazio")
+        print("\nCLIENTES (Colunas 1-4, lado DIREITO):")
+        for name, col in sorted(self.client_columns.items(), key=lambda x: x[1]):
+            print(f"  • {name:15} = Coluna {col}")
+        print(f"\nSTORAGE (Colunas 5-9, lado ESQUERDO): {self.storage_columns}")
+        print("\nORIENTAÇÃO:")
+        print("  • Coluna 1 = Extrema DIREITA")
+        print("  • Coluna 9 = Extrema ESQUERDA")
+        print("  • Linha 1 = BASE (embaixo)")
+        print("  • Linha 6 = TOPO (em cima)")
+        print("="*95 + "\n")
+
 
 class LineController:
     def __init__(self, server: "FactoryModbusEventServer", verbose: bool = True):
@@ -16,6 +326,14 @@ class LineController:
         self._empty_running = False
         self._production_running = False
         self._lock = threading.Lock()
+
+        self.DEFAULT_ORDER_COUNT  = 1
+        self.DEFAULT_ORDER_COLOR  = "GREEN"
+        self.DEFAULT_ORDER_BOXES  = 5
+        self.DEFAULT_ORDER_RESOURCE  = 5
+        self.DEFAULT_ORDER_CLIENT = "rafael_ltda"
+
+        self.warehouse_data_structure = WarehouseExtension(verbose=verbose)
 
         # --- Estados da mesa ---
         self._turntable_turn = False  # False = giro OFF/centro
@@ -28,36 +346,156 @@ class LineController:
 
         self.is_warehouse_free = True
 
+    def whichProductIs(self):
+        if(self.DEFAULT_ORDER_COLOR == 'BLUE'):
+            return 'GREEN'
+        
+        return 'BLUE'
 
     # ================= warehouse space =====================
 
     # ------------ storage ------------
     def save_on_storage_warehouse(self):
-        if self.server.machine_state != "running":
-            if(self.verbose):
-                print('\n\n \t\t [LOG STORAGE WAREHOUSE] === Impossível executar este evento pois a máquina não está em execução. \n\n')
-            return
+        # if self.server.machine_state != "running":
+        #     if(self.verbose):
+        #         print('\n\n \t\t [LOG STORAGE WAREHOUSE] === Impossível executar este evento pois a máquina não está em execução. \n\n')
+        #     return
 
         threading.Thread(target=self._t_save_on_storage_warehouse, name="T_save_on_storage_warehouse", daemon=True).start()
 
     def _t_save_on_storage_warehouse(self):
+        if(self.is_warehouse_free == False):
+            return
+
         if(self.verbose):
-            print('\n\n \t\t [LOG STORAGE WAREHOUSE] === Guardando no armazém. \n\n')
-        return
+            print('\n\n \t\t [LOG storage WAREHOUSE] === writing in target position. \n\n')
+        
+        self.is_warehouse_free = False
+
+        try:
+        
+            self.server.write_input_register(address=Holding_Registers.posicao_alvo, value = self.warehouse_data_structure.storage_column_number)
+            time.sleep(2)
+            print('\t\t', Coils.sensor_move_warehouse)
+            while(self.server.get_sensor(Coils.sensor_move_warehouse)): time.sleep(0.2)
+            self.server.set_actuator(Inputs.manejador_fora, True)
+            time.sleep(2)
+            self.server.set_actuator(Inputs.manejador_levantar, True)
+            time.sleep(2)
+            self.server.set_actuator(Inputs.manejador_fora, False)
+            time.sleep(1)
+
+            print('momento de mandar para a proxima coluna disponível')
+            storage_position = self.warehouse_data_structure._find_next_available_storage_column()
+
+            if storage_position is None:
+                print('[ERRO] Storage está completamente cheio! Impossível armazenar.')
+                return
+            
+            column_free, row_free = storage_position
+
+            print(column_free, row_free)
+
+            free_position = column_free + (9 * (row_free - 1))
+            print('\t\tposição disponível atualmente: ', free_position)
+
+            self.server.write_input_register(address=Holding_Registers.posicao_alvo, value = free_position)
+
+            time.sleep(1)
+            while(self.server.get_sensor(Coils.sensor_move_warehouse)): time.sleep(0.2)
+
+            self.server.set_actuator(Inputs.manejador_dentro, True)
+            time.sleep(2)
+            self.server.set_actuator(Inputs.manejador_levantar, False)
+            time.sleep(2)
+            self.server.set_actuator(Inputs.manejador_dentro, False)
+            time.sleep(1)
+
+            self.server.write_input_register(address=Holding_Registers.posicao_alvo, value = 300)
+
+            time.sleep(1)
+            while(self.server.get_sensor(Coils.sensor_move_warehouse)): time.sleep(0.2)
+
+            self.warehouse_data_structure._occupy_position(column_free, row_free, self.DEFAULT_ORDER_COLOR, f'{column_free}_{row_free}_order')
+            time.sleep(0.1)
+            self.warehouse_data_structure.print_warehouse_map()
+
+        except ValueError as e:
+            print('[ERRO ao executar a função write_input_register - posicao_alvo]: ', e)
+
+        self.is_warehouse_free = True
     
     # ------------ client ------------
     def save_on_client_warehouse(self):
-        if self.server.machine_state != "running":
-            if(self.verbose):
-                print('\n\n \t\t [LOG client WAREHOUSE] === Impossível executar este evento pois a máquina não está em execução. \n\n')
-            return
+        
+        # if self.server.machine_state != "running":
+        #     if(self.verbose):
+        #         print('\n\n \t\t [LOG client WAREHOUSE] === Impossível executar este evento pois a máquina não está em execução. \n\n')
+        #     return
 
         threading.Thread(target=self._t_save_on_client_warehouse, name="T_save_on_client_warehouse", daemon=True).start()
 
     def _t_save_on_client_warehouse(self):
+        if(self.is_warehouse_free == False):
+            return
+
         if(self.verbose):
-            print('\n\n \t\t [LOG client WAREHOUSE] === Guardando no armazém. \n\n')
-        return
+            print('\n\n \t\t [LOG client WAREHOUSE] === writing in target position. \n\n')
+        
+        self.is_warehouse_free = False
+
+        try:
+        
+            self.server.write_input_register(address=Holding_Registers.posicao_alvo, value = self.warehouse_data_structure.client_column_number)
+            time.sleep(2)
+            print('\t\t', Coils.sensor_move_warehouse)
+            while(self.server.get_sensor(Coils.sensor_move_warehouse)): time.sleep(0.2)
+            self.server.set_actuator(Inputs.manejador_fora, True)
+            time.sleep(2)
+            self.server.set_actuator(Inputs.manejador_levantar, True)
+            time.sleep(2)
+            self.server.set_actuator(Inputs.manejador_fora, False)
+            time.sleep(1)
+
+            print('momento de mandar para a proxima coluna disponível')
+            client_position = self.warehouse_data_structure._find_next_available_client_position(self.DEFAULT_ORDER_CLIENT)
+
+            if client_position is None:
+                print('[ERRO] client está completamente cheio! Impossível armazenar.')
+                return
+            
+            column_free, row_free = client_position
+
+            print(column_free, row_free)
+
+            free_position = column_free + (9 * (row_free - 1))
+            print('\t\tposição disponível atualmente: ', free_position)
+
+            self.server.write_input_register(address=Holding_Registers.posicao_alvo, value = free_position)
+
+            time.sleep(1)
+            while(self.server.get_sensor(Coils.sensor_move_warehouse)): time.sleep(0.2)
+
+            self.server.set_actuator(Inputs.manejador_dentro, True)
+            time.sleep(2)
+            self.server.set_actuator(Inputs.manejador_levantar, False)
+            time.sleep(2)
+            self.server.set_actuator(Inputs.manejador_dentro, False)
+            time.sleep(1)
+
+            self.server.write_input_register(address=Holding_Registers.posicao_alvo, value = 300)
+
+            time.sleep(1)
+            while(self.server.get_sensor(Coils.sensor_move_warehouse)): time.sleep(0.2)
+
+            self.warehouse_data_structure._occupy_position(column_free, row_free, self.whichProductIs(), f'{column_free}_{row_free}_order')
+            time.sleep(0.1)
+            self.warehouse_data_structure.print_warehouse_map()
+
+        except ValueError as e:
+            print('[ERRO ao executar a função write_input_register - posicao_alvo]: ', e)
+
+        self.is_warehouse_free = True
 
 
 
