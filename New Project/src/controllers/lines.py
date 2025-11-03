@@ -2,9 +2,12 @@ import threading
 import time
 from addresses import Coils, Inputs
 
+from typing import TYPE_CHECKING
+from server import FactoryModbusEventServer
+    
 
 class LineController:
-    def __init__(self, server, verbose: bool = True):
+    def __init__(self, server: FactoryModbusEventServer, verbose: bool = True):
         self.server = server
         self.verbose = verbose
         self._blue_running = False
@@ -21,6 +24,41 @@ class LineController:
         self.turntable_busy = False
         self.active_job = None
         self.turntable1_busy = False
+
+        self.is_warehouse_free = True
+
+
+    # ================= warehouse space =====================
+
+    # ------------ storage ------------
+    def save_on_storage_warehouse(self):
+        if self.server.machine_state != "running":
+            if(self.verbose):
+                print('\n\n \t\t [LOG STORAGE WAREHOUSE] === Impossível executar este evento pois a máquina não está em execução. \n\n')
+            return
+
+        threading.Thread(target=self._t_save_on_storage_warehouse, name="T_save_on_storage_warehouse", daemon=True).start()
+
+    def _t_save_on_storage_warehouse(self):
+        if(self.verbose):
+            print('\n\n \t\t [LOG STORAGE WAREHOUSE] === Guardando no armazém. \n\n')
+        return
+    
+    # ------------ client ------------
+    def save_on_client_warehouse(self):
+        if self.server.machine_state != "running":
+            if(self.verbose):
+                print('\n\n \t\t [LOG client WAREHOUSE] === Impossível executar este evento pois a máquina não está em execução. \n\n')
+            return
+
+        threading.Thread(target=self._t_save_on_client_warehouse, name="T_save_on_client_warehouse", daemon=True).start()
+
+    def _t_save_on_client_warehouse(self):
+        if(self.verbose):
+            print('\n\n \t\t [LOG client WAREHOUSE] === Guardando no armazém. \n\n')
+        return
+
+
 
     # ---------------- Helpers IO ----------------
     def _activate(self, *actuators):
