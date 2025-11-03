@@ -1,6 +1,7 @@
 import threading
 from typing import Callable, Dict, List
 from addresses import Coils, Inputs
+from controllers.lines import LineController
 
 DEFAULT_ORDER_COUNT  = 1      # "Quantos pedidos?"
 DEFAULT_ORDER_COLOR  = "GREEN" # "BLUE" | "GREEN" | "EMPTY"
@@ -15,7 +16,7 @@ class EventProcessor:
     Mantém o estado anterior das coils relevantes.
     """
 
-    def __init__(self, server, lines_controller, verbose: bool = True):
+    def __init__(self, server, lines_controller: LineController, verbose: bool = True):
         self.server = server
         self.lines = lines_controller
         self.verbose = verbose
@@ -25,6 +26,13 @@ class EventProcessor:
 
     def handle_scan(self, coils_snapshot: List[int]) -> None:
 
+        # ----- eventos da warehouse
+
+        self._handle_edge(
+            Coils.Sensor_1_Caixote_Verde,
+            coils_snapshot,
+            lambda: self.lines.run_green_line(),
+        )
                 
         # Sensores que verificam a presença de caixotes no emmiter
         self._handle_edge(
@@ -32,11 +40,13 @@ class EventProcessor:
             coils_snapshot,
             lambda: self.lines.run_blue_line(),
         )
+
         self._handle_edge(
             Coils.Sensor_1_Caixote_Verde,
             coils_snapshot,
             lambda: self.lines.run_green_line(),
         )
+
         self._handle_edge(
             Coils.Sensor_1_Caixote_Vazio,
             coils_snapshot,
