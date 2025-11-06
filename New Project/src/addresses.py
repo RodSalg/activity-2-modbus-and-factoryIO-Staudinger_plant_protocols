@@ -42,6 +42,13 @@ class Coils:
 
     sensor_move_warehouse = 8
 
+    tt3_limit_0 = 91
+    tt3_limit_90 = 98
+
+    sensor_hall_1_6 = 6
+
+    Sensor_turntable3 = 18
+
 
 
 class Inputs:
@@ -91,7 +98,14 @@ class Inputs:
     manejador_dentro = 35
     manejador_fora = 36
 
+    Turntable3_turn = 96
+    Turntable3_roll = 98
 
+    pick_place = 99
+
+    esteira_pedido = 55
+
+    
 
 class Esteiras(IntEnum):
     Esteira_Producao_1 = 30
