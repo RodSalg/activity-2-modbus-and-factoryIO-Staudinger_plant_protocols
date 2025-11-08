@@ -260,7 +260,7 @@ class FactoryModbusEventServer(Stoppable):
             print("Start Line")
         if self.machine_state in ("emergency", "running"):
             return
-        self.machine_state = "running"
+        #self.machine_state = "running"                      ##### comentar
         self.sequence_step = "idle"
         self.set_actuator(Inputs.Stop, False)
         self.set_actuator(Inputs.Running, True)
@@ -335,3 +335,153 @@ class FactoryModbusEventServer(Stoppable):
                 f"[{datetime.now().strftime('%H:%M:%S')}] estado={self.machine_state} passo={self.sequence_step}"
             )
             print("=" * 60, "\n")
+
+
+
+    def controle_turntable_3(self, alvo_90_graus: bool):
+
+    
+        atuador_giro = Inputs.Turntable3_turn  # Input 42
+        sensor_alvo = Coils.tt3_limit_90 # Coil 16 (Alvo é sempre 90)
+        
+        # 2. Checa se a mesa já está na posição
+        if self.server.get_sensor(sensor_alvo):
+            print("[TT3] Mesa já está em 90 graus. Pulando giro.")
+            return True
+
+        # 3. Lógica de Rotação
+        print("[TT3] Iniciando giro para 90 graus.")
+        self.server.set_actuator(atuador_giro, True) # Liga o atuador de giro
+
+        # Espera até que o sensor de limite 90 seja ativado
+        timeout = time.time() + 1.0 
+        while self.server.get_sensor(sensor_alvo) == False and time.time() < timeout:
+            time.sleep(self.server.scan_time)
+            
+        self.server.set_actuator(atuador_giro, False) # Desliga o atuador de giro
+
+        if self.server.get_sensor(sensor_alvo) == False:
+            print("[TT3] ERRO DE GIRO: Tempo esgotado ou sensor de limite falhou.")
+            return False
+
+        print("[TT3] Giro concluído com sucesso.")
+        return True
+
+
+
+
+
+    def _process_turntable3(self):
+        """
+        Controla a entrada de uma caixa na Turntable 3, a centraliza 
+        e inicia o processo de envio para a Esteira Pedido (2).
+        """
+        print("Caixa detectada na entrada. Iniciando processamento da TT3.")
+
+        
+        # 2. CENTRALIZAR A CAIXA NA MESA
+        print("Movendo caixa para o centro da mesa.")
+        self.set_actuator(Inputs.Turntable3_roll, True) 
+        
+        # Espera até o sensor central (Coil 20) ser ativado
+        timeout = time.time() + 1.0 
+        while self.get_sensor(Coils.Sensor_turntable3) == False and time.time() < timeout:
+            time.sleep(self.scan_time)
+                     
+        if self.get_sensor(Coils.Sensor_turntable3) == False:
+            print("⚠️ ERRO: Caixa não chegou ao sensor central da TT3 (Coil 20). Abortando.")
+            return 
+
+        # 3. CHAMAR A LÓGICA DE MOVIMENTO PARA O PEDIDO (Já está simplificada)
+        print("Caixa centralizada. Iniciando giro e envio para Pedido (2).")
+
+        self.mover_para_cliente(esteira_destino=Inputs.esteira_pedido)
+
+
+
+    def retorno_turntable_3(self) -> bool:
+    
+    # 1. Definições de Mapeamento (Fixo 0 graus)
+        atuador_giro = Inputs.Turntable3_turn  # Input 42
+        sensor_alvo = Coils.tt3_limit_0  # Coil 17 (Alvo é sempre 0)
+        
+        # 2. Checa se a mesa já está na posição
+        if self.server.get_sensor(sensor_alvo):
+            print("[TT3] Mesa já está em 0 graus. Não precisa retornar.")
+            return True
+
+        # 3. Lógica de Rotação
+        print("[TT3] Iniciando retorno para 0 graus.")
+        self.server.set_actuator(atuador_giro, True) 
+
+        # Espera até que o sensor de limite 0 seja ativado
+        timeout = time.time() + 1.0 
+        while self.server.get_sensor(sensor_alvo) == False and time.time() < timeout:
+            time.sleep(self.server.scan_time)
+            
+        self.server.set_actuator(atuador_giro, False) 
+
+        if self.server.get_sensor(sensor_alvo) == False:
+            print("⚠️ [TT3] ERRO DE RETORNO: Tempo esgotado ou sensor de limite 0 falhou.")
+            return False
+
+        print("[TT3] Retorno para 0 graus concluído com sucesso.")
+        return True
+
+        
+
+    def mover_para_cliente(self, esteira_destino: int ) -> bool:
+
+        if not self.controle_turntable_3(): 
+            print("[PEDIDO] Falha no giro. Abortando.")
+            return False
+
+        sensor_parada_destino = Coils.sensor_hall_1_6
+        
+        self.server.set_actuator(esteira_destino, True) # Inputs.esteira_pedido (Input 47)
+        print(f"[PEDIDO] Esteira de Pedido (Input {esteira_destino}) LIGADA.")
+
+        # 3. EMPURRAR A CAIXA (Roll Forward)
+        atuador_roll = Inputs.Turntable3_roll 
+        print("[PEDIDO] Acionando Roll Forward para empurrar a caixa.")
+        self.server.set_actuator(atuador_roll, True)
+        
+        # Espera a caixa SAIR da Turntable (Coils.Sensor_turntable3, Coil 20)
+        timeout = time.time() + 5.0 
+        while self.server.get_sensor(Coils.Sensor_turntable3) == True and time.time() < timeout:
+            time.sleep(self.server.scan_time)
+
+        self.server.set_actuator(atuador_roll, False) # Desliga o Roll Forward
+        
+        if self.server.get_sensor(Coils.Sensor_turntable3) == True:
+            print("⚠️ [PEDIDO] ERRO: Caixa não saiu da mesa após o tempo limite.")
+            self.server.set_actuator(esteira_destino, False) 
+            return False
+
+        print("[PEDIDO] Caixa saiu da Turntable 3. Aguardando parada no destino.")
+
+        # 4. AGUARDAR PARADA NO DESTINO (Sensor Coil 6)
+        timeout = time.time() + 2.0 
+        while self.server.get_sensor(sensor_parada_destino) == False and time.time() < timeout:
+            time.sleep(self.server.scan_time)
+            
+        self.server.set_actuator(esteira_destino, False) # DESLIGA a esteira de destino
+        
+        if self.server.get_sensor(sensor_parada_destino) == False:
+            print("⚠️ [PEDIDO] ERRO: Caixa não chegou ao sensor de parada no destino (Coil 6).")
+            return False
+        
+        print("[PEDIDO] Caixa parada no sensor de destino (Coil 6). Processo concluído.")
+        
+        if self.server.get_sensor(sensor_parada_destino) == False:
+            print("⚠️ [PEDIDO] ERRO: Caixa não chegou ao sensor de parada no destino (Coil 6).")
+            return False
+        
+        print("[PEDIDO] Caixa parada no sensor de destino (Coil 6). Processo concluído.")
+
+        # --- NOVO PASSO: RETORNAR A MESA ---
+        self.retorno_turntable_3()
+
+        return True
+    
+    

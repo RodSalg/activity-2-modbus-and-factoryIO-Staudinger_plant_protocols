@@ -2,6 +2,8 @@ from enum import IntEnum
 
 class Holding_Registers:
     posicao_alvo = 0
+
+    
     
 class Coils:
     Emergency = 9
@@ -43,6 +45,13 @@ class Coils:
     sensor_move_warehouse = 8
 
     button_box_from_storage = 70
+    tt3_limit_0 = 91
+    tt3_limit_90 = 98
+
+    sensor_hall_1_6 = 6
+
+    Sensor_turntable3 = 18
+
 
 
 class Inputs:
@@ -95,7 +104,14 @@ class Inputs:
     light_button_box_from_storage = 90
     light_have_in_store = 11
     light_not_in_store = 12
+    Turntable3_turn = 96
+    Turntable3_roll = 98
 
+    pick_place = 99
+
+    esteira_pedido = 55
+
+    
 
 class Esteiras(IntEnum):
     Esteira_Producao_1 = 30
