@@ -1,7 +1,12 @@
 import threading
-from typing import Callable, Dict, List
+from typing import Callable, Dict, List, TYPE_CHECKING
 from addresses import Coils, Inputs
 from controllers.lines import LineController
+import time
+
+from services.DAO import ConfigManager, OrderConfig
+if TYPE_CHECKING:
+    from server import FactoryModbusEventServer
 
 DEFAULT_ORDER_COUNT  = 1      # "Quantos pedidos?"
 DEFAULT_ORDER_COLOR  = "GREEN" # "BLUE" | "GREEN" | "EMPTY"
@@ -16,7 +21,7 @@ class EventProcessor:
     Mantém o estado anterior das coils relevantes.
     """
 
-    def __init__(self, server, lines_controller: LineController, verbose: bool = True):
+    def __init__(self, server: "FactoryModbusEventServer", lines_controller: LineController, verbose: bool = True):
         self.server = server
         self.lines = lines_controller
         self.verbose = verbose
@@ -24,19 +29,44 @@ class EventProcessor:
         self._hal_prev = False
         self._hal_prev = 0
 
-    def handle_scan(self, coils_snapshot: List[int]) -> None:
+        self.config = ConfigManager()
 
+        self.first_time = True
+
+        t_handle_storage = threading.Thread(target = self.handle_storage)
+        t_handle_storage.start()
+
+    def handle_storage(self):
+
+        if(self.first_time):
+            time.sleep(2)
+            self.first_time = False
 
         # ---------------------------------------------
         # ---------------------------------------------
 
         # ----- eventos da warehouse
 
-        # -- storage event
-        self._handle_edge( Coils.sensor_storage_warehouse, coils_snapshot, lambda: self.lines.save_on_storage_warehouse(), )
+        while(True):
 
-        # -- client event
-        self._handle_edge(Coils.sensor_client_warehouse, coils_snapshot, lambda: self.lines.save_on_client_warehouse(), )
+            if(self.server.get_sensor(Coils.sensor_client_warehouse) == True):
+                print("Sensor client é true")
+                self.lines._t_save_on_client_warehouse()
+                
+
+            time.sleep(1)
+
+            if(self.server.get_sensor(Coils.sensor_storage_warehouse) == True):
+                print("Sensor storage é true")
+                self.lines._t_save_on_storage_warehouse()
+
+            time.sleep(0.500)
+
+
+    def handle_scan(self, coils_snapshot: List[int]) -> None:
+
+
+        self._handle_edge( Coils.button_box_from_storage, coils_snapshot, lambda: self.lines.remove_from_storage_warehouse(), )
 
         # ---------------------------------------------
         # ---------------------------------------------
@@ -90,7 +120,6 @@ class EventProcessor:
             lambda: self.server.auto.arm_tt2_if_idle("Load_Sensor"),
         )
 
-        
 
         self._handle_edge(Coils.Create_OP, coils_snapshot, self._on_create_op)
 
@@ -206,10 +235,13 @@ class EventProcessor:
     def _on_create_op(self):
         if self.verbose:
             print("[EVENTS] Create_OP → cadastrando pedidos…")
+        
+        configs = self.config.get_config()
+
         self.server.auto.orders.create_order(
-            color=DEFAULT_ORDER_COLOR,
-            boxes=DEFAULT_ORDER_BOXES,
-            count=DEFAULT_ORDER_COUNT,
+            color = configs.order_color,
+            boxes = configs.order_boxes,
+            count = configs.order_count,
         )
         # CORRETO: mudar o modo no AutoController
         self.server.auto._set_mode_order()
