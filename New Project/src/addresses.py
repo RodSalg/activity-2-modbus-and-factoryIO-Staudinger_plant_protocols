@@ -2,6 +2,8 @@ from enum import IntEnum
 
 class Holding_Registers:
     posicao_alvo = 0
+
+    
     
 class Coils:
     Emergency = 9

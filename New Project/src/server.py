@@ -483,3 +483,5 @@ class FactoryModbusEventServer(Stoppable):
         self.retorno_turntable_3()
 
         return True
+    
+    
