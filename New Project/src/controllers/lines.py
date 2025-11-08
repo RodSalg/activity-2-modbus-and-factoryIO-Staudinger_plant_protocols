@@ -3,6 +3,7 @@ import time
 from addresses import Coils, Inputs, Holding_Registers
 from typing import TYPE_CHECKING
 from typing import Optional, Dict, Tuple
+from services.DAO import ConfigManager, OrderConfig
 
 if TYPE_CHECKING:
     from server import FactoryModbusEventServer
@@ -216,21 +217,29 @@ class WarehouseExtension():
         
         return (client_column, row)
     
-    def _free_position(self, column: int, row: int) -> bool:
+    def _free_position(self, address: int) -> bool:
         """
-        Libera uma posição no warehouse.
+        Libera uma posição no warehouse a partir do endereço Modbus.
         
         Args:
-            column: Número da coluna (1-9)
-            row: Número da linha (1-6)
+            address: Endereço Modbus da posição (1-54)
         
         Returns:
             True se posição foi liberada, False se já estava livre
         """
+        
+        if not (1 <= address <= 54):
+            if self.verbose:
+                print(f"[WAREHOUSE] ERRO: Endereço inválido: {address}. Deve estar entre 1 e 54.")
+            return False
+        
+        column = ((address - 1) % 9) + 1
+        row = ((address - 1) // 9) + 1
+        
         with self._warehouse_lock:
             if not self.warehouse[column][row]["occupied"]:
                 if self.verbose:
-                    print(f"[WAREHOUSE] AVISO: Posição coluna={column} linha={row} já está livre")
+                    print(f"[WAREHOUSE] AVISO: Posição endereço={address} (coluna={column} linha={row}) já está livre")
                 return False
             
             self.warehouse[column][row] = {
@@ -242,9 +251,49 @@ class WarehouseExtension():
             
             if self.verbose:
                 pos_desc = self._get_position_description(column, row)
-                print(f"[WAREHOUSE] Posição liberada: {pos_desc}")
+                print(f"[WAREHOUSE] Posição liberada: endereço={address} ({pos_desc})")
             
             return True
+        
+    def _find_available_product(self, product: str) -> int:
+        """
+        Busca um produto disponível no storage (colunas 5-9).
+        
+        Args:
+            product: Tipo do produto a buscar ("green" ou "blue")
+        
+        Returns:
+            Endereço Modbus da posição encontrada ou -1 se não houver produto disponível
+        """
+        product_type = product.upper()
+        
+        if product_type not in ["GREEN", "BLUE"]:
+            if self.verbose:
+                print(f"[WAREHOUSE] ERRO: Tipo de produto inválido: {product}")
+            return -1
+        
+        with self._warehouse_lock:
+            for col in self.storage_columns:
+
+                for row in range(1, 7):
+                    position = self.warehouse[col][row]
+                    
+                    if position["occupied"] and position["product_type"] == product_type:
+                        address = self._calculate_position_address(col, row)
+                        
+                        if self.verbose:
+                            pos_desc = self._get_position_description(col, row)
+                            print(f"[WAREHOUSE] Produto {product_type} encontrado em {pos_desc} (endereço {address})")
+
+                        return address
+        
+        # Se chegou aqui, não encontrou o produto
+        if self.verbose:
+            print(f"[WAREHOUSE] Produto {product_type} não disponível no storage")
+        
+        return -1
+
+    
     
     def print_warehouse_map(self) -> None:
         """
@@ -327,13 +376,27 @@ class LineController:
         self._production_running = False
         self._lock = threading.Lock()
 
-        self.DEFAULT_ORDER_COUNT  = 1
-        self.DEFAULT_ORDER_COLOR  = "GREEN"
-        self.DEFAULT_ORDER_BOXES  = 5
-        self.DEFAULT_ORDER_RESOURCE  = 5
-        self.DEFAULT_ORDER_CLIENT = "rafael_ltda"
+        self.config = ConfigManager()
 
+        # self.DEFAULT_ORDER_COUNT  = 1
+        # self.DEFAULT_ORDER_COLOR  = "GREEN"
+        # self.DEFAULT_ORDER_BOXES  = 5
+        # self.DEFAULT_ORDER_RESOURCE  = 5
+        # self.DEFAULT_ORDER_CLIENT = "rafael_ltda"
+
+        # --- construção da classe de controle da warehouse
         self.warehouse_data_structure = WarehouseExtension(verbose=verbose)
+
+            # -- definindo algumas caixas alocadas no cliente 1 e 2
+        self.warehouse_data_structure._occupy_position(1, 2, 'BLUE', f'column_free_row_free_order')
+        self.warehouse_data_structure._occupy_position(2, 2, 'BLUE', f'column_free_row_free_order')
+
+            # -- definindo algumas caixas alocadas no estoque
+        self.warehouse_data_structure._occupy_position(9, 1, 'BLUE', f'column_free_row_free_order')
+        self.warehouse_data_structure._occupy_position(9, 2, 'BLUE', f'column_free_row_free_order')
+        self.warehouse_data_structure._occupy_position(8, 2, 'BLUE', f'column_free_row_free_order')
+        self.warehouse_data_structure._occupy_position(9, 4, 'BLUE', f'column_free_row_free_order')
+
 
         # --- Estados da mesa ---
         self._turntable_turn = False  # False = giro OFF/centro
@@ -347,7 +410,7 @@ class LineController:
         self.is_warehouse_free = True
 
     def whichProductIs(self):
-        if(self.DEFAULT_ORDER_COLOR == 'BLUE'):
+        if(self.config.get_config().order_color == 'BLUE'):
             return 'GREEN'
         
         return 'BLUE'
@@ -377,11 +440,15 @@ class LineController:
             self.server.write_input_register(address=Holding_Registers.posicao_alvo, value = self.warehouse_data_structure.storage_column_number)
             time.sleep(2)
             print('\t\t', Coils.sensor_move_warehouse)
+            
             while(self.server.get_sensor(Coils.sensor_move_warehouse)): time.sleep(0.2)
+
             self.server.set_actuator(Inputs.manejador_fora, True)
             time.sleep(2)
+            
             self.server.set_actuator(Inputs.manejador_levantar, True)
             time.sleep(2)
+            
             self.server.set_actuator(Inputs.manejador_fora, False)
             time.sleep(1)
 
@@ -416,7 +483,7 @@ class LineController:
             time.sleep(1)
             while(self.server.get_sensor(Coils.sensor_move_warehouse)): time.sleep(0.2)
 
-            self.warehouse_data_structure._occupy_position(column_free, row_free, self.DEFAULT_ORDER_COLOR, f'{column_free}_{row_free}_order')
+            self.warehouse_data_structure._occupy_position(column_free, row_free, self.config.get_config().order_color, f'{column_free}_{row_free}_order')
             time.sleep(0.1)
             self.warehouse_data_structure.print_warehouse_map()
 
@@ -424,6 +491,95 @@ class LineController:
             print('[ERRO ao executar a função write_input_register - posicao_alvo]: ', e)
 
         self.is_warehouse_free = True
+
+    def remove_from_storage_warehouse(self):
+        # if self.server.machine_state != "running":
+        #     if(self.verbose):
+        #         print('\n\n \t\t [LOG STORAGE WAREHOUSE] === Impossível executar este evento pois a máquina não está em execução. \n\n')
+        #     return
+
+        threading.Thread(target=self._t_remove_from_storage_warehouse, name="T_remove_from_storage_warehouse", daemon=True).start()
+
+    def _t_remove_from_storage_warehouse(self,):
+        if(self.is_warehouse_free == False):
+            print('A thread de remoção do estoque não foi executada pois o robô não está livre!')
+            return
+
+        if(self.verbose):
+            print('\n\n \t\t [LOG storage WAREHOUSE] === writing in target position. \n\n')
+        
+        self.is_warehouse_free = False
+
+        self.server.set_actuator(Inputs.light_button_box_from_storage, True)
+        
+        try:
+        
+            #como é uma retirada, garanto que o Z está baixo
+            self.server.set_actuator(Inputs.manejador_levantar, False)
+
+            #encontrando onde tem um produto disponível
+            
+            order_color = self.config.get_config().order_color 
+            position_of_item = self.warehouse_data_structure._find_available_product(order_color)
+
+            if(position_of_item == -1):
+                if(self.verbose):
+                    print('Não foi encontrado nada no estoque!')
+                    self.server.set_actuator(Inputs.light_not_in_store, True)
+
+                    time.sleep(3)
+
+                    self.server.set_actuator(Inputs.light_not_in_store, False)
+                    self.is_warehouse_free = True
+
+                    return
+            self.server.set_actuator(Inputs.light_have_in_store, True)
+            
+            
+            #vou ate a coluna a qual eu quero remover
+            self.server.write_input_register(address=Holding_Registers.posicao_alvo, value = position_of_item)
+
+            time.sleep(2)
+            print('\t\t', Coils.sensor_move_warehouse)
+            while(self.server.get_sensor(Coils.sensor_move_warehouse)): time.sleep(0.2)
+
+            self.server.set_actuator(Inputs.manejador_dentro, True)
+            time.sleep(2)
+            self.server.set_actuator(Inputs.manejador_levantar, True)
+            time.sleep(2)
+            self.server.set_actuator(Inputs.manejador_dentro, False)
+            time.sleep(1)
+
+            self.server.write_input_register(address=Holding_Registers.posicao_alvo, value = 8)
+
+            time.sleep(1)
+            while(self.server.get_sensor(Coils.sensor_move_warehouse)): time.sleep(0.2)
+
+            self.server.set_actuator(Inputs.manejador_fora, True)
+            time.sleep(2)
+            self.server.set_actuator(Inputs.manejador_levantar, False)
+            time.sleep(2)
+            self.server.set_actuator(Inputs.manejador_fora, False)
+            time.sleep(1)
+
+            self.server.write_input_register(address=Holding_Registers.posicao_alvo, value = 300)
+
+            time.sleep(1)
+            while(self.server.get_sensor(Coils.sensor_move_warehouse)): time.sleep(0.2)
+
+            self.warehouse_data_structure._free_position(address=position_of_item)
+
+            time.sleep(0.1)
+            self.warehouse_data_structure.print_warehouse_map()
+
+        except ValueError as e:
+            print('[ERRO ao executar a função write_input_register - posicao_alvo]: ', e)
+            
+        self.server.set_actuator(Inputs.light_button_box_from_storage, False)
+        self.server.set_actuator(Inputs.light_have_in_store, False)
+
+        self.is_warehouse_free = True
+
     
     # ------------ client ------------
     def save_on_client_warehouse(self):
@@ -458,7 +614,7 @@ class LineController:
             time.sleep(1)
 
             print('momento de mandar para a proxima coluna disponível')
-            client_position = self.warehouse_data_structure._find_next_available_client_position(self.DEFAULT_ORDER_CLIENT)
+            client_position = self.warehouse_data_structure._find_next_available_client_position(self.config.get_config().order_client)
 
             if client_position is None:
                 print('[ERRO] client está completamente cheio! Impossível armazenar.')
