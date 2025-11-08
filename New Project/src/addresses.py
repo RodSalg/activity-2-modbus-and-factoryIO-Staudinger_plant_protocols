@@ -42,6 +42,7 @@ class Coils:
 
     sensor_move_warehouse = 8
 
+    button_box_from_storage = 70
 
 
 class Inputs:
@@ -91,6 +92,9 @@ class Inputs:
     manejador_dentro = 35
     manejador_fora = 36
 
+    light_button_box_from_storage = 90
+    light_have_in_store = 11
+    light_not_in_store = 12
 
 
 class Esteiras(IntEnum):
