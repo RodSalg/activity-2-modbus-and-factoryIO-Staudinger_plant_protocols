@@ -11,7 +11,7 @@ def main():
     auto = AutoController(srv, verbose=True)
     srv.auto = auto
 
-    feeder = RandomFeeder(srv, period_s=(8, 12), pulse_ms=360)
+    feeder = RandomFeeder(srv, period_s=(10, 20), pulse_ms=360)
 
     srv.start()
     feeder.start()
