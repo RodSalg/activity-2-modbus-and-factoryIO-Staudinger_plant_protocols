@@ -290,10 +290,6 @@ class FactoryModbusEventServer(Stoppable):
     def _on_emergency_toggle(self):
         print("valor da emergencia: ", self.get_sensor(Coils.Emergency))
 
-        # turntable_state1 = self.get_actuator(Inputs.Turntable1_Esteira_EntradaSaida)
-        # turntable_state2 = self.get_actuator(Inputs.Turntable1_Esteira_SaidaEntrada)
-
-        # Emergência ON (coil False)
         if (
             self.machine_state != "emergency"
             and self.get_sensor(Coils.Emergency) is False
@@ -307,7 +303,6 @@ class FactoryModbusEventServer(Stoppable):
             self.set_actuator(Inputs.Emergency, True)
             self._all_off()
 
-        # Emergência OFF (coil True) -> SAIR do estado 'emergency'
         elif (
             self.machine_state == "emergency"
             and self.get_sensor(Coils.Emergency) is True
