@@ -36,6 +36,21 @@ class EventProcessor:
         t_handle_storage = threading.Thread(target = self.handle_storage)
         t_handle_storage.start()
 
+        # t_handle_conveyor_storage = threading.Thread(target = self.handle_conveyor_storage)
+        # t_handle_conveyor_storage.start()
+
+        t_conveyor_1 = threading.Thread(target = self.handle_conveyor_storage_1)
+        t_conveyor_1.start()
+
+        t_conveyor_2 = threading.Thread(target = self.handle_conveyor_storage_2)
+        t_conveyor_2.start()
+
+        t_conveyor_3 = threading.Thread(target = self.handle_conveyor_storage_3)
+        t_conveyor_3.start()
+
+        t_conveyor_4 = threading.Thread(target = self.handle_conveyor_storage_4)
+        t_conveyor_4.start()
+
     def handle_storage(self):
 
         if(self.first_time):
@@ -62,11 +77,177 @@ class EventProcessor:
 
             time.sleep(0.500)
 
+    def handle_conveyor_storage_1(self):
+        """
+        Gerencia a ESTEIRA 1: Recebe do hall_1_0
+        Continua rodando se tiver caixa no meio (is_box_conveyor_1) até chegar na ponta
+        """
+        while True:
+            try:
+                hall_1_0 = self.server.get_sensor(Coils.sensor_hall_1_0)
+                sensor_1 = self.server.get_sensor(Coils.sensor_conveyor_storage_1)
+                is_box_1 = self.server.get_sensor(Coils.is_box_conveyor_1)
+
+                if hall_1_0 and not sensor_1:
+                    self.server.set_actuator(Inputs.conveyor_storage_1, True)
+
+                    while self.server.get_sensor(Coils.sensor_conveyor_storage_1) == False:
+                        if self.verbose:
+                            print('preso aqui no 1')
+                        self.server.set_actuator(Inputs.conveyor_storage_1, True)
+                        time.sleep(0.1)
+
+                    time.sleep(1)
+                    self.server.set_actuator(Inputs.conveyor_storage_1, False)
+                
+                elif is_box_1 and not sensor_1:
+                    self.server.set_actuator(Inputs.conveyor_storage_1, True)
+                    if self.verbose:
+                        print('Movendo caixa do meio da esteira 1 até a ponta')
+                    time.sleep(0.1)
+                else:
+                    self.server.set_actuator(Inputs.conveyor_storage_1, False)
+                
+                time.sleep(2)
+                
+            except Exception as e:
+                if self.verbose:
+                    print(f"[EVENTS] Erro no handle_conveyor_storage_1: {e}")
+                time.sleep(0.5)
+
+
+    def handle_conveyor_storage_2(self):
+        """
+        Gerencia a ESTEIRA 2: Recebe da esteira 1
+        Continua rodando se tiver caixa no meio (is_box_conveyor_2) até chegar na ponta
+        """
+        while True:
+            try:
+                sensor_1 = self.server.get_sensor(Coils.sensor_conveyor_storage_1)
+                sensor_2 = self.server.get_sensor(Coils.sensor_conveyor_storage_2)
+                is_box_2 = self.server.get_sensor(Coils.is_box_conveyor_2)
+
+                if sensor_1 and not sensor_2:
+                    self.server.set_actuator(Inputs.conveyor_storage_2, True)
+
+                    self.server.set_actuator(Inputs.conveyor_storage_1, True)
+                    time.sleep(2)
+                    self.server.set_actuator(Inputs.conveyor_storage_1, False)
+                    
+                    while self.server.get_sensor(Coils.sensor_conveyor_storage_2) == False:
+                        self.server.set_actuator(Inputs.conveyor_storage_2, True)
+                        if self.verbose:
+                            print('preso aqui no 2')
+                        time.sleep(0.1)
+
+                    time.sleep(1)
+                    self.server.set_actuator(Inputs.conveyor_storage_2, False)
+                
+                elif is_box_2 and not sensor_2:
+                    self.server.set_actuator(Inputs.conveyor_storage_2, True)
+                    if self.verbose:
+                        print('Movendo caixa do meio da esteira 2 até a ponta')
+                    time.sleep(0.1)
+                else:
+                    self.server.set_actuator(Inputs.conveyor_storage_2, False)
+                
+                time.sleep(2)
+                
+            except Exception as e:
+                if self.verbose:
+                    print(f"[EVENTS] Erro no handle_conveyor_storage_2: {e}")
+                time.sleep(0.5)
+
+
+    def handle_conveyor_storage_3(self):
+        """
+        Gerencia a ESTEIRA 3: Recebe da esteira 2
+        Continua rodando se tiver caixa no meio (is_box_conveyor_3) até chegar na ponta
+        """
+        while True:
+            try:
+                sensor_2 = self.server.get_sensor(Coils.sensor_conveyor_storage_2)
+                sensor_3 = self.server.get_sensor(Coils.sensor_conveyor_storage_3)
+                is_box_3 = self.server.get_sensor(Coils.is_box_conveyor_3)
+
+                if sensor_2 and not sensor_3:
+                    self.server.set_actuator(Inputs.conveyor_storage_3, True)
+
+                    self.server.set_actuator(Inputs.conveyor_storage_2, True)
+                    time.sleep(2)
+                    self.server.set_actuator(Inputs.conveyor_storage_2, False)
+
+                    while self.server.get_sensor(Coils.sensor_conveyor_storage_3) == False:
+                        self.server.set_actuator(Inputs.conveyor_storage_3, True)
+                        if self.verbose:
+                            print('preso aqui no 3')
+                        time.sleep(0.1)
+
+                    time.sleep(0.3)
+                    self.server.set_actuator(Inputs.conveyor_storage_3, False)
+                
+                elif is_box_3 and not sensor_3:
+                    self.server.set_actuator(Inputs.conveyor_storage_3, True)
+                    if self.verbose:
+                        print('Movendo caixa do meio da esteira 3 até a ponta')
+                    time.sleep(0.1)
+                else:
+                    self.server.set_actuator(Inputs.conveyor_storage_3, False)
+                
+                time.sleep(2)
+                
+            except Exception as e:
+                if self.verbose:
+                    print(f"[EVENTS] Erro no handle_conveyor_storage_3: {e}")
+                time.sleep(0.5)
+
+
+    def handle_conveyor_storage_4(self):
+        """
+        Gerencia a ESTEIRA 4 (FINAL): Recebe da esteira 3 e entrega no warehouse
+        Esta esteira não tem is_box sensor intermediário
+        """
+        while True:
+            try:
+                sensor_3 = self.server.get_sensor(Coils.sensor_conveyor_storage_3)
+                sensor_storage = self.server.get_sensor(Coils.sensor_storage_warehouse)
+
+                if sensor_3 and not sensor_storage:
+                    self.server.set_actuator(Inputs.conveyor_storage_4, True)
+
+                    self.server.set_actuator(Inputs.conveyor_storage_3, True)
+                    time.sleep(2)
+                    self.server.set_actuator(Inputs.conveyor_storage_3, False)
+
+                    while self.server.get_sensor(Coils.sensor_storage_warehouse) == False:
+
+                        if(self.server.get_sensor(Coils.sensor_conveyor_storage_3)):
+                            self.server.set_actuator(Inputs.conveyor_storage_3, True)
+                            time.sleep(0.7)
+                            self.server.set_actuator(Inputs.conveyor_storage_3, False)
+                            
+                        self.server.set_actuator(Inputs.conveyor_storage_4, True)
+                        if self.verbose:
+                            print('preso aqui no 4')
+                        time.sleep(0.1)
+
+                    self.server.set_actuator(Inputs.conveyor_storage_4, False)
+                
+                time.sleep(1)
+                
+            except Exception as e:
+                if self.verbose:
+                    print(f"[EVENTS] Erro no handle_conveyor_storage_4: {e}")
+                time.sleep(0.5)
+
 
     def handle_scan(self, coils_snapshot: List[int]) -> None:
 
 
         self._handle_edge( Coils.button_box_from_storage, coils_snapshot, lambda: self.lines.remove_from_storage_warehouse(), )
+
+        # ---> Eventos da esteira do estoque
+        # self._handle_edge( Coils.sensor_hall_1_0, coils_snapshot, lambda: self.lines.run_conveyor_client(), )
 
         # ---------------------------------------------
         # ---------------------------------------------
