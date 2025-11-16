@@ -39,7 +39,6 @@ class Coils:
     Sensor_Write = 10
     Emitter_Blue_Button = 26
 
-    sensor_storage_warehouse = 13
     sensor_client_warehouse = 14
 
     sensor_move_warehouse = 8
@@ -52,6 +51,19 @@ class Coils:
 
     Sensor_turntable3 = 18
 
+    # ----> sensores do conveyor
+
+    sensor_hall_1_0 = 0
+
+    sensor_conveyor_storage_1 = 73
+    sensor_conveyor_storage_2 = 74
+    sensor_conveyor_storage_3 = 75
+
+    sensor_storage_warehouse = 13
+
+    is_box_conveyor_1 = 31
+    is_box_conveyor_2 = 32
+    is_box_conveyor_3 = 33
 
 
 class Inputs:
@@ -110,6 +122,14 @@ class Inputs:
     pick_place = 99
 
     esteira_pedido = 55
+
+    # -----> conveyors do lado do estoque
+    conveyor_storage_1 = 3
+    conveyor_storage_2 = 4
+    conveyor_storage_3 = 5
+    conveyor_storage_4 = 6
+
+
 
     
 
