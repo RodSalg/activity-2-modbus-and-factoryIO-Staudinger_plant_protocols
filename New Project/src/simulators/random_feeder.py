@@ -79,12 +79,9 @@ class RandomFeeder:
         last = 0.0
         while not self._stop.is_set():
             if self.server.machine_state == "running":
-                # não emitir se emergência ativa (ajuste conforme sua flag)
-                # if self.server.is_emergency: 
-                #     time.sleep(0.1); continue
 
                 pick = random.choice(("BLUE", "GREEN", "EMPTY"))
-                # pick =  "GREEN"
+                pick =  "BLUE"
                 combo = [(addr, off) for (addr, off) in self.combos[pick] if addr is not None]
 
                 now = time.time()
