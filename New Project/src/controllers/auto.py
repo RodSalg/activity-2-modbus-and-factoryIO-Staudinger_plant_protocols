@@ -33,8 +33,8 @@ class AutoController:
 
         self.TT2_GIRO_S = 1.6
         self.TT2_RETORNO_S = 1.6
-        self.TT2_ENTRADA_TOUT = 8.0
-        self.TT2_SAIDA_TOUT = 10.0
+        self.TT2_ENTRADA_TOUT = 6.0
+        self.TT2_SAIDA_TOUT = 6.0
 
         self._stop_event = threading.Event()
         self.running = False
@@ -583,7 +583,7 @@ class AutoController:
                 turn_on=None,  # sem giro
                 belt="forward",  # descarregar para esteira central
                 stop_limit=None,  # sem limite, pois não tem giro
-                belt_timeout_s=1.5,  # tempo até detectar Sensor_Discharge (ou timeout)
+                belt_timeout_s=10,  # tempo até detectar Sensor_Discharge (ou timeout)
             )
 
             # destino do pedido: Esteira_Central (CONFIRA o ID no addresses.py)
@@ -602,9 +602,6 @@ class AutoController:
                 elif was_high and not val:
                     break
                 time.sleep(0.01)
-
-            # para belt interno
-            self.lines._t2_set_turntable(turn_on=None, belt="stop",stop_limit=None , belt_timeout_s= 0.0)
 
             # baixa no pedido
             if self.orders:

@@ -275,7 +275,7 @@ class EventProcessor:
             Coils.Sensor_2_Caixote_Azul,
             coils_snapshot,
             lambda: self._on_arrival(
-                "blue", Coils.Sensor_2_Caixote_Azul, self.lines.stop_blue_line
+                "blue", Coils.Sensor_2_Caixote_Azul, self.lines.run_esteira_producao_2
             ),
         )
 

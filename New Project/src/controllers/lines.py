@@ -676,6 +676,16 @@ class LineController:
         threading.Thread(
             target=self._t_run_blue_line, name="TRUN-BlueLine", daemon=True
         ).start()
+    
+    def run_esteira_producao_2(self):
+        if self.server.machine_state != "running":
+            return
+        # if self.verbose:
+        #     print("ligando linha azul")
+
+        threading.Thread(
+            target=self._t_start_prod_line, name="TRUN-ProductionLine", daemon=True
+        ).start()
 
     def stop_blue_line(self):
         if self.verbose:
@@ -691,14 +701,14 @@ class LineController:
                 return
             self._blue_running = True
         try:
-            self._activate(Inputs.Caixote_Azul_Esteira_1, Inputs.Caixote_Azul_Esteira_2)
+            self._activate(Inputs.Caixote_Azul_Esteira_1, Inputs.Caixote_Azul_Esteira_2, Inputs.Esteira_Producao_1)
         finally:
             pass
 
-    def _t_stop_blue_line(self):
+    def _t_start_prod_line(self):
         try:
-            self._deactivate(
-                Inputs.Caixote_Azul_Esteira_1, Inputs.Caixote_Azul_Esteira_2
+            self._activate(
+                Inputs.Esteira_Producao_2,
             )
         finally:
             with self._lock:

@@ -73,8 +73,7 @@ class ConfigManager:
     
     def __init__(self, ):
 
-        config_path = r"C:\Users\mnstsalg\Documents\04 - personal\modbus - ufam\activity-2-modbus-and-factoryIO-Staudinger_plant_protocols\New Project\src\services\data.json"
-
+        config_path = "./data.json"
         if self._initialized:
             return
         
