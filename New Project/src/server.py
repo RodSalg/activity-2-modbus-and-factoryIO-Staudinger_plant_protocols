@@ -260,7 +260,7 @@ class FactoryModbusEventServer(Stoppable):
             print("Start Line")
         if self.machine_state in ("emergency", "running"):
             return
-        #self.machine_state = "running"                      ##### comentar
+        self.machine_state = "running"
         self.sequence_step = "idle"
         self.set_actuator(Inputs.Stop, False)
         self.set_actuator(Inputs.Running, True)
