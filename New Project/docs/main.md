@@ -14,15 +14,16 @@ Arquivo de referência: `main.py`
 
 ```mermaid
 flowchart TD
-    A[main()] --> B[Cria FactoryModbusEventServer (srv)]
-    B --> C[Cria AutoController (auto) e anexa a srv]
-    C --> D[Cria RandomFeeder (feeder) - opcional]
-    D --> E[srv.start() e feeder.start()]
-    E --> F[Loop principal: srv.snapshot(); sleep(2)]
+    A[main] --> B[Create FactoryModbusEventServer — srv]
+    B --> C[Create AutoController — auto (attach to srv)]
+    C --> D[Create RandomFeeder — feeder (optional)]
+    D --> E[Start srv and feeder]
+    E --> F[Main loop: snapshot every 2s]
     F --> G[Ctrl+C (KeyboardInterrupt)]
-    G --> H[auto.stop(); srv.stop(); feeder.stop() — Encerramento limpo]
+    G --> H[auto.stop / srv.stop / feeder.stop — clean shutdown]
     style A fill:#f9f,stroke:#333,stroke-width:1px
     style H fill:#fdd,stroke:#333,stroke-width:1px
+```
 ```
 
 > Observação: o `AutoController` só passa a executar o ciclo automático quando o operador aciona o botão `Start` (coil). O `RandomFeeder` é opcional e serve para testes sem hardware.
