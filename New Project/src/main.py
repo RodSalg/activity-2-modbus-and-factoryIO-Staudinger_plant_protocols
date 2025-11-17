@@ -19,10 +19,8 @@ def main():
 """
         print(banner)
 
-        # imprime informações básicas e instrução
         print("Pressione CTRL+C para encerrar")
 
-        # tenta descobrir o diretório do repositório (procura .git até 5 níveis acima)
         try:
             p = Path(__file__).resolve()
             repo_dir = None
@@ -31,10 +29,8 @@ def main():
                     repo_dir = Path(parent)
                     break
             if repo_dir is None:
-                # fallback: subir dois níveis (New Project/ src -> repo)
                 repo_dir = p.parents[1]
 
-            # executa git shortlog para obter lista de contribuidores
             try:
                 res = subprocess.run(
                     ["git", "shortlog", "-sne", "HEAD"],
@@ -46,19 +42,15 @@ def main():
                 if res.returncode == 0 and res.stdout.strip():
                     print("\nContribuidores (top):")
                     lines = [ln.strip() for ln in res.stdout.splitlines() if ln.strip()]
-                    # mostra até 6 contribuidores
                     for ln in lines[:6]:
                         print("  " + ln)
                 else:
-                    # sem git ou sem histórico
                     pass
             except Exception:
                 pass
         except Exception:
-            # não bloquear a inicialização caso algo falhe
             pass
 
-    # imprime o banner de início
     print_banner()
 
     srv = FactoryModbusEventServer(
