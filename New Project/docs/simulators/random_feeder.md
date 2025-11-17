@@ -16,9 +16,9 @@ Arquivo de referência: `random_feeder.py`
 
 ```mermaid
 flowchart TD
-    classDef redText fill:#efe,stroke:#333,stroke-width:1px,color:#c00;
-    A[RandomFeeder.start] --> B[Loop while not stopped]
-    class A redText
+    classDef blackText color:#000,fill:#fff,stroke:#333,stroke-width:1px;
+    A["RandomFeeder.start"] --> B[Loop]
+    class A blackText
     B --> C{Server running?}
     C -- No --> D[Wait short time]
     D --> B
@@ -28,6 +28,7 @@ flowchart TD
     G --> H[Sleep random between period_s]
     H --> B
     B --> I[stop event set -> exit loop]
+    class I blackText
     style A fill:#efe,stroke:#333,stroke-width:1px
     style I fill:#fdd,stroke:#333,stroke-width:1px
 ```
