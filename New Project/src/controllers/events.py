@@ -41,31 +41,102 @@ class EventProcessor:
 
         self.first_time = True
 
-        t_handle_storage = threading.Thread(target=self.handle_storage, daemon=True)
+        t_handle_storage = threading.Thread(target=self.handle_storage)
         t_handle_storage.start()
 
         # t_handle_conveyor_storage = threading.Thread(target = self.handle_conveyor_storage)
         # t_handle_conveyor_storage.start()
 
-        t_conveyor_1 = threading.Thread(
-            target=self.handle_conveyor_storage_1, daemon=True
-        )
+        t_conveyor_1 = threading.Thread(target=self.handle_conveyor_storage_1)
         t_conveyor_1.start()
 
-        t_conveyor_2 = threading.Thread(
-            target=self.handle_conveyor_storage_2, daemon=True
-        )
+        t_conveyor_2 = threading.Thread(target=self.handle_conveyor_storage_2)
         t_conveyor_2.start()
 
-        t_conveyor_3 = threading.Thread(
-            target=self.handle_conveyor_storage_3, daemon=True
-        )
+        t_conveyor_3 = threading.Thread(target=self.handle_conveyor_storage_3)
         t_conveyor_3.start()
 
-        t_conveyor_4 = threading.Thread(
-            target=self.handle_conveyor_storage_4, daemon=True
-        )
+        t_conveyor_4 = threading.Thread(target=self.handle_conveyor_storage_4)
         t_conveyor_4.start()
+
+        # --- threads client warehouse
+
+        t_esteira_principal = threading.Thread(target=self.handle_esteira_principal, daemon = True)
+        t_esteira_principal.start()
+
+
+    def handle_esteira_principal(self):
+        """
+        Gerencia a esteira principal - liga quando detecta caixa no SENSOR_TT2
+        """
+        while True:
+            try:
+                if self.server.get_sensor(Coils.SENSOR_TT2):
+                    self.server.set_actuator(Inputs.Turntable3_forward, True)
+                
+                time.sleep(0.1)
+                
+            except Exception as e:
+                if self.verbose:
+                    print(f"[EVENTS] Erro no handle_esteira_principal: {e}")
+                time.sleep(0.5)
+
+    def _on_tt3_detection(self):
+        """Callback quando TT3 detecta caixa"""
+        # Só aciona se a mesa não estiver ocupada
+        if not self.lines.turntable3_busy:
+            if self.verbose:
+                print("📦 Caixa detectada na TT3 - iniciando sequência")
+            self.lines.ciclo_turntable3()
+
+
+    def _on_hall_1_6(self):
+        """Callback para HALL 1_6 - pausa esteira de pedido"""
+        if self.verbose:
+            print("HALL_1_6 detectado - pausando esteira de pedido")
+        
+        self.server.set_actuator(Inputs.ESTEIRA_PEDIDO, False)
+        time.sleep(3.0)
+        self.server.set_actuator(Inputs.ESTEIRA_PEDIDO, True)
+
+
+    def _on_hall_1_5(self):
+        """Callback para HALL 1_5 - aciona pick and place"""
+        if self.verbose:
+            print("HALL_1_5 detectado - acionando pick/place")
+        
+        self.server.set_actuator(Inputs.ESTEIRA_PEDIDO, False)
+        # self.lines.pick_and_place()
+
+
+        print('acionando o pick')
+        self.server.set_actuator(Inputs.PICK_PLACE, True)
+        time.sleep(5.0)
+        self.server.set_actuator(Inputs.PICK_PLACE, False)
+        
+        time.sleep(1)  # Pequena pausa para garantir que o pick/place iniciou
+
+
+        self.server.set_actuator(Inputs.ESTEIRA_PEDIDO, True)
+
+
+    def _on_hall_1_4(self):
+        """Callback para HALL 1_4 - liga esteira de carregamento"""
+        if self.verbose:
+            print("HALL_1_4 detectado - ligando esteira de carregamento")
+        
+        # self.lines.start_esteira_carregamento()
+        self.server.set_actuator(Inputs.ESTEIRA_CARREGAMENTO, True)
+
+
+    def _on_sensor_warehouse(self):
+        """Callback para sensor do warehouse - para esteira de carregamento"""
+        if self.verbose:
+            print("Warehouse cheio - parando esteira de carregamento")
+        
+        self.lines.stop_esteira_carregamento()
+        time.sleep(3.0)
+
 
     def handle_storage(self):
 
@@ -262,6 +333,42 @@ class EventProcessor:
 
     def handle_scan(self, coils_snapshot: List[int]) -> None:
 
+        # ---> Eventos da esteira do client
+
+        # TT3 - Turntable 3
+        self._handle_edge(
+            Coils.SENSOR_TT3,
+            coils_snapshot,
+            lambda: self._on_tt3_detection()
+        )
+
+        # HALL 1_6 - Para esteira de pedido temporariamente
+        self._handle_edge(
+            Coils.SENSOR_HALL_1_6,
+            coils_snapshot,
+            lambda: self._on_hall_1_6()
+        )
+        
+        # HALL 1_5 - Aciona pick and place
+        self._handle_edge(
+            Coils.SENSOR_HALL_1_5,
+            coils_snapshot,
+            lambda: self._on_hall_1_5()
+        )
+        
+        # HALL 1_4 - Liga esteira de carregamento
+        self._handle_edge(
+            Coils.SENSOR_HALL_1_4,
+            coils_snapshot,
+            lambda: self._on_hall_1_4()
+        )
+        
+        # SENSOR WAREHOUSE - Para esteira de carregamento
+        self._handle_edge(
+            Coils.SENSOR_WAREHOUSE,
+            coils_snapshot,
+            lambda: self._on_sensor_warehouse()
+        )
         self._handle_edge(
             Coils.button_box_from_storage,
             coils_snapshot,

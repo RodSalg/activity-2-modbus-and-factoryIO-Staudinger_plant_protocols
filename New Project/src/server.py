@@ -335,7 +335,6 @@ class FactoryModbusEventServer(Stoppable):
 
     def controle_turntable_3(self, alvo_90_graus: bool):
 
-    
         atuador_giro = Inputs.Turntable3_turn  # Input 42
         sensor_alvo = Coils.tt3_limit_90 # Coil 16 (Alvo é sempre 90)
         
@@ -361,8 +360,6 @@ class FactoryModbusEventServer(Stoppable):
 
         print("[TT3] Giro concluído com sucesso.")
         return True
-
-
 
 
 

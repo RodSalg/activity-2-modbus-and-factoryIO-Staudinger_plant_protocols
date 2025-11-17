@@ -51,7 +51,7 @@ class Coils:
 
     Sensor_turntable3 = 18
 
-    # ----> sensores do conveyor
+    # ----> sensores do conveyor storage
 
     sensor_hall_1_0 = 0
 
@@ -64,6 +64,16 @@ class Coils:
     is_box_conveyor_1 = 31
     is_box_conveyor_2 = 32
     is_box_conveyor_3 = 33
+
+
+    # ---> sensores conveyor client 
+
+    SENSOR_TT3 = 18
+    SENSOR_TT2 = 3
+    SENSOR_HALL_1_5 = 5
+    SENSOR_HALL_1_6 = 6
+    SENSOR_HALL_1_4 = 49
+    SENSOR_WAREHOUSE = 14
 
 
 class Inputs:
@@ -128,6 +138,14 @@ class Inputs:
     conveyor_storage_2 = 4
     conveyor_storage_3 = 5
     conveyor_storage_4 = 6
+
+    # ----> conveyors lado client
+
+    Turntable3_turn = 42  # TURN_ADDR
+    Turntable3_forward = 43  # FWD_ADDR
+    ESTEIRA_PEDIDO = 55
+    PICK_PLACE = 59
+    ESTEIRA_CARREGAMENTO = 47
 
 
 
