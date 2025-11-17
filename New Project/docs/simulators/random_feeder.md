@@ -16,7 +16,9 @@ Arquivo de referência: `random_feeder.py`
 
 ```mermaid
 flowchart TD
+    classDef redText fill:#efe,stroke:#333,stroke-width:1px,color:#c00;
     A[RandomFeeder.start] --> B[Loop while not stopped]
+    class A redText
     B --> C{Server running?}
     C -- No --> D[Wait short time]
     D --> B
