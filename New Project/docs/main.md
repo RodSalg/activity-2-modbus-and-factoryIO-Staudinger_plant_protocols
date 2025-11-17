@@ -14,13 +14,13 @@ Arquivo de referência: `main.py`
 
 ```mermaid
 flowchart TD
-    A[main] --> B[Create FactoryModbusEventServer — srv]
-    B --> C[Create AutoController — auto (attach to srv)]
-    C --> D[Create RandomFeeder — feeder (optional)]
-    D --> E[Start srv and feeder]
-    E --> F[Main loop: snapshot every 2s]
-    F --> G[Ctrl+C (KeyboardInterrupt)]
-    G --> H[auto.stop / srv.stop / feeder.stop — clean shutdown]
+    A[main] --> B[create server srv]
+    B --> C[create auto controller]
+    C --> D[create random feeder]
+    D --> E[start services]
+    E --> F[main loop snapshot]
+    F --> G[interrupt Ctrl+C]
+    G --> H[stop all cleanly]
     style A fill:#f9f,stroke:#333,stroke-width:1px
     style H fill:#fdd,stroke:#333,stroke-width:1px
 ```
