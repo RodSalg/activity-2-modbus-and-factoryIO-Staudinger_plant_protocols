@@ -757,7 +757,7 @@ class LineController:
             if not self.config.queue_storage:
                 if self.verbose:
                     print("[STORAGE] Fila de storage está vazia!")
-                return None
+                return 'BLUE'
             
             first_item = self.config.queue_storage[0]
             
