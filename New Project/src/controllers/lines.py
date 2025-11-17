@@ -601,7 +601,7 @@ class LineController:
             time.sleep(1)
             while(self.server.get_sensor(Coils.sensor_move_warehouse)): time.sleep(0.2)
 
-            self.warehouse_data_structure._occupy_position(column_free, row_free, self.config.get_config().order_color, f'{column_free}_{row_free}_order')
+            self.warehouse_data_structure._occupy_position(column_free, row_free, self.get_current_color_storage(), f'{column_free}_{row_free}_order')
             time.sleep(0.1)
             self.warehouse_data_structure.print_warehouse_map()
 
@@ -700,6 +700,89 @@ class LineController:
 
     
     # ------------ client ------------
+
+    def get_current_client_storage(self) -> str:
+        """
+        Retorna e remove o primeiro cliente da fila de storage.
+        Consome a fila (FIFO - First In, First Out).
+        
+        Cada objeto da fila tem o formato:
+        {"client": None, "color_box": "BLUE", "resources": None}
+        
+        Returns:
+            str: Nome do cliente ou None se a fila estiver vazia
+        """
+        try:
+            if not self.config.queue_orders:
+                if self.verbose:
+                    print("[STORAGE] Fila de storage está vazia!")
+                return None
+            
+            first_item = self.config.queue_orders.pop(0)
+            
+            client_name = first_item.get("client", None)
+            
+            if self.verbose:
+                print(f"[STORAGE] Item consumido da fila: {first_item}")
+                print(f"[STORAGE] Cliente: {client_name}")
+                print(f"[STORAGE] Restam {len(self.config.queue_orders)} items na fila")
+            
+            return client_name
+            
+        except (IndexError, AttributeError) as e:
+
+            if self.verbose:
+                print(f"[STORAGE] ERRO ao consumir fila: {e}")
+            return None
+        
+        except Exception as e:
+
+            if self.verbose:
+
+                print(f"[STORAGE] ERRO inesperado: {e}")
+            return None
+
+
+    def get_current_color_storage(self) -> str:
+        """
+        Retorna a cor do próximo item da fila de storage SEM REMOVER.
+        Apenas consulta o primeiro item da fila.
+        
+        Cada objeto da fila tem o formato:
+        {"client": None, "color_box": "BLUE", "resources": None}
+        
+        Returns:
+            str: Cor da caixa (ex: "BLUE", "GREEN") ou None se a fila estiver vazia
+        """
+        try:
+            if not self.config.queue_storage:
+                if self.verbose:
+                    print("[STORAGE] Fila de storage está vazia!")
+                return 'BLUE'
+            
+            first_item = self.config.queue_storage[0]
+            
+            color_box = first_item.get("color_box", None)
+            
+            if self.verbose:
+                print(f"[STORAGE] Cor consultada: {color_box}")
+            
+            return color_box
+            
+        except (IndexError, AttributeError) as e:
+
+            if self.verbose:
+                print(f"[STORAGE] ERRO ao consultar fila: {e}")
+
+            return None
+        
+        except Exception as e:
+            
+            if self.verbose:
+                print(f"[STORAGE] ERRO inesperado: {e}")
+            
+            return None
+
     def save_on_client_warehouse(self):
         
         # if self.server.machine_state != "running":
@@ -732,7 +815,7 @@ class LineController:
             time.sleep(1)
 
             print('momento de mandar para a proxima coluna disponível')
-            client_position = self.warehouse_data_structure._find_next_available_client_position(self.config.get_config().order_client)
+            client_position = self.warehouse_data_structure._find_next_available_client_position(self.get_current_client_storage())
 
             if client_position is None:
                 print('[ERRO] client está completamente cheio! Impossível armazenar.')
