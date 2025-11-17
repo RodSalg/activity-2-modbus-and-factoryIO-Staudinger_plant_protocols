@@ -81,6 +81,10 @@ class Inputs:
     Stop = 1
     Emergency = 2
 
+    RED = 17
+    YELLOW = 18
+    GREEN = 19
+
     EntryConveyor = 10
 
     Esteira_Estoque = 14
@@ -126,12 +130,6 @@ class Inputs:
     light_button_box_from_storage = 90
     light_have_in_store = 11
     light_not_in_store = 12
-    Turntable3_turn = 96
-    Turntable3_roll = 98
-
-    pick_place = 99
-
-    esteira_pedido = 55
 
     # -----> conveyors do lado do estoque
     conveyor_storage_1 = 3
@@ -146,10 +144,6 @@ class Inputs:
     ESTEIRA_PEDIDO = 55
     PICK_PLACE = 59
     ESTEIRA_CARREGAMENTO = 47
-
-
-
-    
 
 class Esteiras(IntEnum):
     Esteira_Producao_1 = 30

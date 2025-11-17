@@ -481,6 +481,7 @@ class LineController:
                 print("📦 Iniciando ciclo da Turntable 3")
             
             # Para a esteira forward
+            time.sleep(1.5)
             self.server.set_actuator(Inputs.Turntable3_forward, False)
             time.sleep(1.5)
             

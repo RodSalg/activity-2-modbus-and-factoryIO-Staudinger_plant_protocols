@@ -69,7 +69,7 @@ class MES:
     ):
 
         # padrão: data.json na raiz do repositório (subindo 3 níveis: services->src->New Project->repo)
-        config_path = Path(__file__).resolve().parents[3] / "./orders/orders.json"
+        config_path = Path(__file__).resolve().parents[3] / "./src/orders/orders.json"
         if self._initialized:
             return
 

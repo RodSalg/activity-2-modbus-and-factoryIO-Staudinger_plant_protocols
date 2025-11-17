@@ -238,6 +238,7 @@ class FactoryModbusEventServer(Stoppable):
 
     def _all_on(self) -> None:
         # self._write_coil(Inputs.EntryConveyor, False)
+        self.set_actuator(Inputs.GREEN, True)
         self.set_actuator(Inputs.Running, True)
         for name, addr in Esteiras.__members__.items():
             self.set_actuator(addr.value, True)
@@ -262,8 +263,13 @@ class FactoryModbusEventServer(Stoppable):
             return
         self.machine_state = "running"
         self.sequence_step = "idle"
+        self.set_actuator(Inputs.RED, False)
+        self.set_actuator(Inputs.GREEN, True)
+        self.set_actuator(Inputs.YELLOW, False)
+
         self.set_actuator(Inputs.Stop, False)
         self.set_actuator(Inputs.Running, True)
+        self.set_actuator(Inputs.Emergency, False)
         self.auto.start()
 
     def _on_stop(self):
@@ -271,9 +277,13 @@ class FactoryModbusEventServer(Stoppable):
             print("Stop")
         self.machine_state = "Stopped"
         self.sequence_step = "idle"
-        self.set_actuator(Inputs.Emergency, False)
-        self.set_actuator(Inputs.Running, False)
+        self.set_actuator(Inputs.RED, True)
+        self.set_actuator(Inputs.GREEN, False)
+        self.set_actuator(Inputs.YELLOW, False)
+
         self.set_actuator(Inputs.Stop, True)
+        self.set_actuator(Inputs.Running, False)
+        self.set_actuator(Inputs.Emergency, False)
         self._all_off()
 
     def _on_reset(self):
@@ -282,9 +292,13 @@ class FactoryModbusEventServer(Stoppable):
         if self.get_sensor(Coils.RestartButton) is True:
             self.sequence_step = "idle"
             self.machine_state = "Running"
-            self.set_actuator(Inputs.Emergency, False)
+            self.set_actuator(Inputs.RED, False)
+            self.set_actuator(Inputs.GREEN, True)
+            self.set_actuator(Inputs.YELLOW, False)
+
             self.set_actuator(Inputs.Stop, False)
             self.set_actuator(Inputs.Running, True)
+            self.set_actuator(Inputs.Emergency, False)
             self._all_on()
 
     def _on_emergency_toggle(self):
@@ -298,6 +312,10 @@ class FactoryModbusEventServer(Stoppable):
                 print("Emergency ON")
             self.machine_state = "emergency"
             self.sequence_step = "idle"
+            self.set_actuator(Inputs.RED, True)
+            self.set_actuator(Inputs.YELLOW, False)
+            self.set_actuator(Inputs.GREEN, True)
+
             self.set_actuator(Inputs.Stop, True)
             self.set_actuator(Inputs.Running, False)
             self.set_actuator(Inputs.Emergency, True)
