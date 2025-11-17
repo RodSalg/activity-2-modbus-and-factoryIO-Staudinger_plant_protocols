@@ -22,7 +22,7 @@ flowchart TD
     F --> G[interrupt Ctrl+C]
     G --> H[stop all cleanly]
     style A fill:#f9f,stroke:#333,stroke-width:1px
-    style H fill:#fdd,stroke:#333,stroke-width:1px
+    style H fill:#f9d,stroke:#333,stroke-width:1px
 ```
 ```
 
