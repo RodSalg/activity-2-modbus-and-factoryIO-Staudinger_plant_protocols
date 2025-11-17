@@ -374,6 +374,10 @@ class LineController:
         self._green_running = False
         self._empty_running = False
         self._production_running = False
+
+        self.turntable3_busy = False
+
+
         self._lock = threading.Lock()
 
         self.config = ConfigManager()
@@ -414,6 +418,119 @@ class LineController:
             return 'GREEN'
         
         return 'BLUE'
+    
+    # ================= Client conveyor =====================
+
+    # Adicione estes métodos na classe LineController em lines.py:
+
+    def pick_and_place(self):
+        """Aciona o sistema de pick and place"""
+        if self.server.machine_state != "running":
+            return
+        
+        threading.Thread(
+            target=self._t_pick_and_place, 
+            name="T_PickPlace", 
+            daemon=True
+        ).start()
+
+    def _t_pick_and_place(self):
+        """Thread que executa o pick and place"""
+        if self.verbose:
+            print("Acionando pick/place...")
+        
+        try:
+            print('acionando o pick')
+            self.server.set_actuator(Inputs.PICK_PLACE, True)
+            time.sleep(2.0)
+            self.server.set_actuator(Inputs.PICK_PLACE, False)
+            
+            if self.verbose:
+                print("Pick/place concluído")
+        except Exception as e:
+            if self.verbose:
+                print(f"[ERRO] Pick/place falhou: {e}")
+
+
+    def ciclo_turntable3(self):
+        """Inicia o ciclo completo da turntable 3"""
+        # if self.server.machine_state != "running":
+        #     return
+
+        self._t_ciclo_turntable3()
+        
+        # threading.Thread(
+        #     target=self._t_ciclo_turntable3, 
+        #     name="T_CicloTT3", 
+        #     daemon=True
+        # ).start()
+
+    def _t_ciclo_turntable3(self):
+        """Thread que executa o ciclo completo da turntable 3"""
+        print('entrei na thread')
+        # Marca mesa como ocupada
+        with self._lock:
+            if self.turntable3_busy:
+                if self.verbose:
+                    print("[TT3] Mesa já ocupada, ignorando novo ciclo")
+                return
+            self.turntable3_busy = True
+        
+        try:
+            if self.verbose:
+                print("📦 Iniciando ciclo da Turntable 3")
+            
+            # Para a esteira forward
+            self.server.set_actuator(Inputs.Turntable3_forward, False)
+            time.sleep(1.5)
+            
+            # Gira 90°
+            if self.verbose:
+                print("Girando 90°...")
+            self.server.set_actuator(Inputs.Turntable3_turn, True)
+            time.sleep(2.5)
+            
+            # Liga esteira forward e esteira de pedido
+            if self.verbose:
+                print("Ligando esteiras...")
+            self.server.set_actuator(Inputs.Turntable3_forward, True)
+            self.server.set_actuator(Inputs.ESTEIRA_PEDIDO, True)
+            time.sleep(2.5)
+            
+            # Desliga esteira forward
+            self.server.set_actuator(Inputs.Turntable3_forward, False)
+            time.sleep(2.5)
+            
+            # Volta turntable para posição original
+            self.server.set_actuator(Inputs.Turntable3_turn, False)
+            self.server.set_actuator(Inputs.ESTEIRA_PEDIDO, False)
+            
+            if self.verbose:
+                print("✅ Ciclo da Turntable 3 concluído")
+                
+        except Exception as e:
+            if self.verbose:
+                print(f"[ERRO] Ciclo TT3 falhou: {e}")
+        finally:
+            with self._lock:
+                self.turntable3_busy = False
+
+
+    def start_esteira_carregamento(self):
+        """Liga a esteira de carregamento"""
+        if self.server.machine_state != "running":
+            return
+        
+        if self.verbose:
+            print("Ligando esteira de carregamento")
+        self.server.set_actuator(Inputs.ESTEIRA_CARREGAMENTO, True)
+
+
+    def stop_esteira_carregamento(self):
+        """Para a esteira de carregamento"""
+        if self.verbose:
+            print("Parando esteira de carregamento")
+        self.server.set_actuator(Inputs.ESTEIRA_CARREGAMENTO, False)
 
     # ================= warehouse space =====================
 
