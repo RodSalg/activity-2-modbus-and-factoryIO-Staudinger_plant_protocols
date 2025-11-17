@@ -3,7 +3,7 @@ import time
 from addresses import Coils, Inputs, Holding_Registers
 from typing import TYPE_CHECKING
 from typing import Optional, Dict, Tuple
-from services.DAO import ConfigManager, OrderConfig
+from services.DAO import MES, OrderConfig
 
 if TYPE_CHECKING:
     from server import FactoryModbusEventServer
@@ -380,7 +380,7 @@ class LineController:
 
         self._lock = threading.Lock()
 
-        self.config = ConfigManager()
+        self.config = MES()
 
         # self.DEFAULT_ORDER_COUNT  = 1
         # self.DEFAULT_ORDER_COLOR  = "GREEN"

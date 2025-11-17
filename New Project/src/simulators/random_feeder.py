@@ -5,16 +5,19 @@ import time
 from typing import Optional, Iterable, Tuple
 from addresses import Esteiras, Inputs  # seus DIs
 
+
 class RandomFeeder:
     """
-    Emite aleatoriamente:
-      - BLUE  = Caixote azul + Produto azul
-      - GREEN = Caixote verde + Produto verde
-      - EMPTY = Caixote vazio
+        Emite aleatoriamente:
+            - BLUE  = Caixote azul + Produto azul
+            - GREEN = Caixote verde + Produto verde
+            - OTHER = Caixote vazio
     Agora com suporte a offset entre pulsos (produto antes/depois do caixote).
     """
 
-    def __init__(self, server, period_s: tuple[float, float] = (2.0, 5.0), pulse_ms: int = 180):
+    def __init__(
+        self, server, period_s: tuple[float, float] = (2.0, 5.0), pulse_ms: int = 180
+    ):
         self.server = server
         self._th: Optional[threading.Thread] = None
         self._stop = threading.Event()
@@ -26,9 +29,10 @@ class RandomFeeder:
         # offset_ms < 0  -> aciona antes do primeiro
         # Dica: ajuste os offsets do GREEN para acertar a sobreposição física.
         self.combos = {
-            "BLUE":  [(Inputs.Emmiter_Caixote_Azul, 0), (Inputs.Emmiter_Product_Azul, 0)],
-            "GREEN": [(Inputs.Emmiter_Caixote_Verde, 0), (Inputs.Emmiter_Product_Verde, 0)],
-            "EMPTY": [(Inputs.Emmiter_Caixote_Vazio, 0)],
+            "BLUE": [
+                (Inputs.Emmiter_Caixote_Azul, 0),
+                (Inputs.Emmiter_Product_Azul, 0),
+            ]
         }
 
     def _pulse(self, di_addr: int):
@@ -50,8 +54,8 @@ class RandomFeeder:
         threads = []
 
         def _runner(addr: int, off_ms: int):
-            fire_at =  base + (off_ms / 1000.0)
-            delay   = fire_at - time.time()
+            fire_at = base + (off_ms / 1000.0)
+            delay = fire_at - time.time()
             if delay > 0:
                 time.sleep(delay)
             self._pulse(addr)
@@ -68,7 +72,9 @@ class RandomFeeder:
         if self._th and self._th.is_alive():
             return
         self._stop.clear()
-        self._th = threading.Thread(target=self._loop, name="random-feeder", daemon=True)
+        self._th = threading.Thread(
+            target=self._loop, name="random-feeder", daemon=True
+        )
         self._th.start()
 
     def stop(self):
@@ -80,9 +86,10 @@ class RandomFeeder:
         while not self._stop.is_set():
             if self.server.machine_state == "running":
 
-                pick = random.choice(("BLUE", "GREEN", "EMPTY"))
-                pick =  "BLUE"
-                combo = [(addr, off) for (addr, off) in self.combos[pick] if addr is not None]
+                pick = "BLUE"
+                combo = [
+                    (addr, off) for (addr, off) in self.combos[pick] if addr is not None
+                ]
 
                 now = time.time()
                 if now - last < min_gap:
@@ -95,4 +102,3 @@ class RandomFeeder:
                     last = time.time()
 
             time.sleep(random.uniform(*self.period_s))
-

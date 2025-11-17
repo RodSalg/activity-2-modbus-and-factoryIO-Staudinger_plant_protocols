@@ -3,10 +3,11 @@ from queue import Queue
 import threading, time
 from addresses import Coils, Inputs
 from services.orders import OrderManager
+from services.DAO import MES
 
 
 class AutoController:
-    def __init__(self, server, verbose: bool = True):
+    def __init__(self, server, verbose: bool = False):
         self.server = server
         self.verbose = verbose
         self._thread = None
@@ -33,8 +34,8 @@ class AutoController:
 
         self.TT2_GIRO_S = 1.6
         self.TT2_RETORNO_S = 1.6
-        self.TT2_ENTRADA_TOUT = 6.0
-        self.TT2_SAIDA_TOUT = 6.0
+        self.TT2_ENTRADA_TOUT = 8.0
+        self.TT2_SAIDA_TOUT = 8.0
 
         self._stop_event = threading.Event()
         self.running = False
@@ -117,7 +118,6 @@ class AutoController:
             is_order = False
 
         if self._should_route_to_order(klass):
-            # atende pedido AGORA (sem girar)
             self.tt2_q.put(("ORDER", klass))
             if self.verbose:
                 print(
@@ -125,6 +125,27 @@ class AutoController:
                 )
         else:
             # fluxo padrão (sem pedido ou cor errada) -> Estoque
+            # adiciona na fila de storage (sem cliente)
+            try:
+                mes = MES()
+                sto = {"client": None, "color_box": klass, "resources": None}
+                mes.queue_storage.append(sto)
+                # debug: imprimir estado das filas após adicionar NO_ORDER
+                try:
+                    mes.print_queues()
+                except Exception:
+                    # se a instância MES não tiver a função (compatibilidade), imprimir manualmente
+                    try:
+                        print(f"[MES] queue_storage appended: {sto}")
+                        print(
+                            f"[MES] queue_orders (len)={len(mes.queue_orders)} queue_storage (len)={len(mes.queue_storage)}"
+                        )
+                    except Exception:
+                        pass
+            except Exception:
+                if self.verbose:
+                    print("[HAL] aviso: não foi possível adicionar queue_storage")
+
             self.tt2_q.put("NO_ORDER")
             if self.verbose:
                 motivo = "sem pedido" if not has_orders else f"cor não atende ({klass})"
@@ -190,7 +211,7 @@ class AutoController:
                 "return_time": 8.0,
                 "exit_timeout": 100.0,
             },
-            "empty": {
+            "other": {
                 "turn": True,
                 "belt": "backward",
                 "stop_limit": "front",
@@ -285,7 +306,7 @@ class AutoController:
                         self.lines.run_blue_line()
                     elif tipo == "green":
                         self.lines.run_green_line()
-                    elif tipo == "empty":
+                    elif tipo == "other":
                         self.lines.run_empty_line()
 
                 # 4) opcional: espere o watcher desligar o belt interno antes do próximo job
@@ -450,7 +471,7 @@ class AutoController:
             elif seen_green >= debounce:
                 klass = "GREEN"
             else:
-                klass = "EMPTY"
+                klass = "OTHER"
 
             print(f"[HAL] classificado: {klass} (blue={seen_blue}, green={seen_green})")
             self.on_hal_classified(klass)
@@ -606,12 +627,14 @@ class AutoController:
             # baixa no pedido
             if self.orders:
                 self.orders.consume(klass)
-            
+
             try:
                 if self.orders and klass in self.orders:
                     self.orders[klass] = max(0, self.orders[klass] - 1)
                     if self.server.verbose:
-                        print(f"[ORDER] baixa dada em {klass}. Restantes: {self.orders[klass]}")
+                        print(
+                            f"[ORDER] baixa dada em {klass}. Restantes: {self.orders[klass]}"
+                        )
             except Exception:
                 pass
 
@@ -639,7 +662,7 @@ class AutoController:
             return self.orders is not None and self.orders.has_pending()
         except Exception:
             return False
-        
+
     def _should_route_to_order(self, klass: str) -> bool:
         # Só manda pra Central se: modo ORDER, há pedidos pendentes
         # e o OrderManager confirma que essa cor pode ser atendida.
@@ -652,4 +675,3 @@ class AutoController:
             )
         except Exception:
             return False
-
