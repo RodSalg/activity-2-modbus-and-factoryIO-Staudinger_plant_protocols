@@ -190,7 +190,7 @@ class AutoController:
                 "return_time": 8.0,
                 "exit_timeout": 100.0,
             },
-            "empty": {
+            "other": {
                 "turn": True,
                 "belt": "backward",
                 "stop_limit": "front",
@@ -285,7 +285,7 @@ class AutoController:
                         self.lines.run_blue_line()
                     elif tipo == "green":
                         self.lines.run_green_line()
-                    elif tipo == "empty":
+                    elif tipo == "other":
                         self.lines.run_empty_line()
 
                 # 4) opcional: espere o watcher desligar o belt interno antes do próximo job
@@ -450,7 +450,7 @@ class AutoController:
             elif seen_green >= debounce:
                 klass = "GREEN"
             else:
-                klass = "EMPTY"
+                klass = "OTHER"
 
             print(f"[HAL] classificado: {klass} (blue={seen_blue}, green={seen_green})")
             self.on_hal_classified(klass)
@@ -606,12 +606,14 @@ class AutoController:
             # baixa no pedido
             if self.orders:
                 self.orders.consume(klass)
-            
+
             try:
                 if self.orders and klass in self.orders:
                     self.orders[klass] = max(0, self.orders[klass] - 1)
                     if self.server.verbose:
-                        print(f"[ORDER] baixa dada em {klass}. Restantes: {self.orders[klass]}")
+                        print(
+                            f"[ORDER] baixa dada em {klass}. Restantes: {self.orders[klass]}"
+                        )
             except Exception:
                 pass
 
@@ -639,7 +641,7 @@ class AutoController:
             return self.orders is not None and self.orders.has_pending()
         except Exception:
             return False
-        
+
     def _should_route_to_order(self, klass: str) -> bool:
         # Só manda pra Central se: modo ORDER, há pedidos pendentes
         # e o OrderManager confirma que essa cor pode ser atendida.
@@ -652,4 +654,3 @@ class AutoController:
             )
         except Exception:
             return False
-

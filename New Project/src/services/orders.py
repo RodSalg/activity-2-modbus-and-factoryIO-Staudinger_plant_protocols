@@ -1,11 +1,12 @@
 # orders.py
 from collections import deque
 from dataclasses import dataclass
+from services.DAO import ConfigManager
 
 
 @dataclass
 class Order:
-    color: str  # "BLUE" | "GREEN" | "EMPTY"
+    color: str  # "BLUE" | "GREEN" | "OTHER"
     boxes_total: int  # quantas caixas esse pedido precisa
     boxes_done: int = 0  # progresso
 
@@ -38,10 +39,12 @@ class OrderManager:
             print(f"[ORDER] criados: {count} pedido(s) - cor={color} caixas={boxes}")
 
     def can_fulfill(self, klass: str) -> bool:
-        # olha o primeiro pedido aberto
+        # Retorna True se EXISTE algum pedido aberto que possa ser atendido
+        # (não apenas o primeiro da fila). Isso permite que a HAL classifique
+        # como ORDER quando qualquer pedido pendente compatível existir.
         for o in self.q:
-            if not o.done:
-                return o.can_fulfill(klass)
+            if not o.done and o.can_fulfill(klass):
+                return True
         return False
 
     def consume(self, klass: str) -> None:
@@ -53,6 +56,18 @@ class OrderManager:
                     print(
                         f"[ORDER] consumido 1 caixa {klass} -> {o.boxes_done}/{o.boxes_total}"
                     )
+                # atualiza o armazenamento persistente (orders.json)
+                try:
+                    cfg = ConfigManager()
+                    consumed = cfg.consume_persistent_order_by_color(klass)
+                    if self.verbose and consumed:
+                        print(f"[ORDER] ordem persistida atualizada para cor={klass}")
+                except Exception:
+                    # não interrompe o fluxo de execução principal se falhar
+                    if self.verbose:
+                        print(
+                            f"[ORDER] aviso: não foi possível atualizar orders persistido para {klass}"
+                        )
                 break
         # limpeza de pedidos finalizados à esquerda
         while self.q and self.q[0].done:
