@@ -11,6 +11,26 @@ Este documento descreve o funcionamento do arquivo `random_feeder.py`, explicand
 Arquivo de referência: `random_feeder.py` 
 
 ---
+
+## Fluxograma do RandomFeeder
+
+```mermaid
+flowchart TD
+    A[RandomFeeder.start] --> B[Loop while not stopped]
+    B --> C{Server running?}
+    C -- No --> D[Wait short time]
+    D --> B
+    C -- Yes --> E[Choose kind: BLUE GREEN EMPTY]
+    E --> F[Get combo pulses for kind]
+    F --> G[Emit pulses with offsets]
+    G --> H[Sleep random between period_s]
+    H --> B
+    B --> I[stop event set -> exit loop]
+    style A fill:#efe,stroke:#333,stroke-width:1px
+    style I fill:#fdd,stroke:#333,stroke-width:1px
+```
+
+> Observação: o fluxograma mostra o comportamento principal do `RandomFeeder`: verifica se o servidor está em modo `running`, escolhe um tipo de peça, emite o combo de pulsos (respeitando offsets) e aguarda um intervalo aleatório antes de repetir.
 # Documentação das Funções — RandomFeeder
 
 Este documento descreve o funcionamento do arquivo `random_feeder.py`, explicando a lógica de cada função e da simulação, **sem modificar o código original**.
@@ -133,8 +153,6 @@ Cada combo define **quais sensores devem ser pulsados** para simular uma peça.
 ```python
 self.combos = {
     "BLUE":  [(Inputs.Emmiter_Caixote_Azul, 0), (Inputs.Emmiter_Product_Azul, 0)],
-    "GREEN": [(Inputs.Emmiter_Caixote_Verde, 0), (Inputs.Emmiter_Product_Verde, 0)],
-    "EMPTY": [(Inputs.Emmiter_Caixote_Vazio, 0)],
 }
 ```
 

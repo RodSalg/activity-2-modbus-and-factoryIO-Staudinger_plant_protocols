@@ -89,15 +89,7 @@ Endereços que representam **entradas acionáveis** ou atuadores (ex: esteiras, 
 | `30`     | `Esteira_Producao_1` |
 | `32`     | `Esteira_Producao_2` |
 
-### 🔄 Turntable 1 (mesa rotativa principal)
-
-| Endereço | Função                            |
-| -------- | --------------------------------- |
-| `93`     | Motor de giro (`Turntable1_turn`) |
-| `94`     | Belt — Entrada→Saída (`forward`)  |
-| `95`     | Belt — Saída→Entrada (`reverse`)  |
-
-### 🔄 Turntable 2 (mesa secundária)
+### 🔄 Turntable (mesa giratória)
 
 | Endereço | Nome              |
 | -------- | ----------------- |
