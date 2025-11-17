@@ -15,9 +15,9 @@ class OrderConfig(BaseModel):
         default="GREEN", description="Cor do pedido"
     )
 
-    order_boxes: int = Field(default=5, ge=1, description="Quantidade de caixas")
+    order_boxes: int = Field(default=1, ge=1, description="Quantidade de caixas")
 
-    order_resource: int = Field(default=5, ge=1, description="Quantidade de recursos")
+    order_resource: int = Field(default=1, ge=1, description="Quantidade de recursos")
 
     order_client: str = Field(default="rafael_ltda", description="Nome do cliente")
 
@@ -39,12 +39,18 @@ class OrderConfig(BaseModel):
         return v
 
 
-class ConfigManager:
+class object(BaseModel):
+    client: str
+    color_box: str
+    resources: int
+
+
+class MES:
     """
     Singleton
     """
 
-    _instance: Optional["ConfigManager"] = None
+    _instance: Optional["MES"] = None
     _lock = threading.Lock()
 
     def __new__(
@@ -70,6 +76,9 @@ class ConfigManager:
         self._config_path = Path(config_path)
         self._config: OrderConfig = self._load_config()
         self._initialized = True
+
+        self.queue_storage = []
+        self.queue_orders = []
 
     def _load_config(self) -> OrderConfig:
 
@@ -228,6 +237,34 @@ class ConfigManager:
                     continue
 
                 if info_color == color and boxes > 0:
+                    # antes de decrementar/remover, adiciona na fila de orders (cliente)
+                    try:
+                        clt = {
+                            "client": client,
+                            "color_box": info_color,
+                            "resources": (
+                                int(info.get("resource", 0))
+                                if info.get("resource") is not None
+                                else None
+                            ),
+                        }
+                        # garante que as filas existem
+                        try:
+                            self.queue_orders.append(clt)
+                            # debug: imprimir estado das filas
+                            try:
+                                print(f"[MES] queue_orders appended: {clt}")
+                                print(
+                                    f"[MES] queue_orders (len)={len(self.queue_orders)} queue_storage (len)={len(self.queue_storage)}"
+                                )
+                            except Exception:
+                                pass
+                        except Exception:
+                            # se a instância atual não tiver queues (incomum), ignore
+                            pass
+                    except Exception:
+                        pass
+
                     boxes -= 1
                     if boxes <= 0:
                         # remove pedido do arquivo
@@ -293,4 +330,22 @@ class ConfigManager:
         return self.get_config().order_client
 
     def __repr__(self) -> str:
-        return f"ConfigManager({self._config})"
+        return f"MES({self._config})"
+
+    def print_queues(self) -> None:
+        """Imprime estado atual das filas `queue_orders` e `queue_storage` (debug)."""
+        try:
+            with self._lock:
+                q_orders = (
+                    list(self.queue_orders) if hasattr(self, "queue_orders") else []
+                )
+                q_storage = (
+                    list(self.queue_storage) if hasattr(self, "queue_storage") else []
+                )
+            print(f"[MES] queue_orders (len)={len(q_orders)} -> {q_orders}")
+            print(f"[MES] queue_storage (len)={len(q_storage)} -> {q_storage}")
+        except Exception as e:
+            try:
+                print(f"[MES] erro ao imprimir filas: {e}")
+            except Exception:
+                pass

@@ -5,10 +5,10 @@ from controllers import AutoController
 
 def main():
     srv = FactoryModbusEventServer(
-        host="0.0.0.0", port=5020, scan_time=0.05, verbose=True
+        host="0.0.0.0", port=5020, scan_time=0.05, verbose=False
     )
 
-    auto = AutoController(srv, verbose=True)
+    auto = AutoController(srv, verbose=False)
     srv.auto = auto
 
     feeder = RandomFeeder(srv, period_s=(10, 20), pulse_ms=360)

@@ -4,7 +4,7 @@ from addresses import Coils, Inputs
 from controllers.lines import LineController
 import time
 
-from services.DAO import ConfigManager, OrderConfig
+from services.DAO import MES, OrderConfig
 
 if TYPE_CHECKING:
     from server import FactoryModbusEventServer
@@ -35,7 +35,7 @@ class EventProcessor:
         self._hal_prev = False
         self._hal_prev = 0
 
-        self.config = ConfigManager()
+        self.config = MES()
         # contador para rotacionar clientes/cores entre invocações de Create_OP
         self._create_op_counter = 0
 

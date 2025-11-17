@@ -1,7 +1,7 @@
 # orders.py
 from collections import deque
 from dataclasses import dataclass
-from services.DAO import ConfigManager
+from services.DAO import MES
 
 
 @dataclass
@@ -58,7 +58,7 @@ class OrderManager:
                     )
                 # atualiza o armazenamento persistente (orders.json)
                 try:
-                    cfg = ConfigManager()
+                    cfg = MES()
                     consumed = cfg.consume_persistent_order_by_color(klass)
                     if self.verbose and consumed:
                         print(f"[ORDER] ordem persistida atualizada para cor={klass}")

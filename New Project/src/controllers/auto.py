@@ -3,6 +3,7 @@ from queue import Queue
 import threading, time
 from addresses import Coils, Inputs
 from services.orders import OrderManager
+from services.DAO import MES
 
 
 class AutoController:
@@ -117,7 +118,6 @@ class AutoController:
             is_order = False
 
         if self._should_route_to_order(klass):
-            # atende pedido AGORA (sem girar)
             self.tt2_q.put(("ORDER", klass))
             if self.verbose:
                 print(
@@ -125,6 +125,27 @@ class AutoController:
                 )
         else:
             # fluxo padrão (sem pedido ou cor errada) -> Estoque
+            # adiciona na fila de storage (sem cliente)
+            try:
+                mes = MES()
+                sto = {"client": None, "color_box": klass, "resources": None}
+                mes.queue_storage.append(sto)
+                # debug: imprimir estado das filas após adicionar NO_ORDER
+                try:
+                    mes.print_queues()
+                except Exception:
+                    # se a instância MES não tiver a função (compatibilidade), imprimir manualmente
+                    try:
+                        print(f"[MES] queue_storage appended: {sto}")
+                        print(
+                            f"[MES] queue_orders (len)={len(mes.queue_orders)} queue_storage (len)={len(mes.queue_storage)}"
+                        )
+                    except Exception:
+                        pass
+            except Exception:
+                if self.verbose:
+                    print("[HAL] aviso: não foi possível adicionar queue_storage")
+
             self.tt2_q.put("NO_ORDER")
             if self.verbose:
                 motivo = "sem pedido" if not has_orders else f"cor não atende ({klass})"
