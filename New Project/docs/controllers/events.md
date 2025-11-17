@@ -1,5 +1,11 @@
 # Documentação das Funções — EventProcessor
 
+## Sumário
+- Visão Geral
+- Funções públicas (`handle_scan`)
+- Detecção de bordas
+- Sensores monitorados
+
 Este documento descreve o funcionamento do arquivo `events.py`.
 
 ---

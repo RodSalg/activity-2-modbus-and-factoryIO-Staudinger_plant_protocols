@@ -1,5 +1,11 @@
 # Documentação — Mapa de Endereços (Coils, Inputs, Esteiras)
 
+## Sumário
+- Visão Geral
+- Coils (botões e sensores)
+- Inputs (esteiras / turntables)
+- Esteiras (IntEnum)
+
 Arquivo de referência: `addresses.py`
 
 ---

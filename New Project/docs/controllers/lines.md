@@ -1,5 +1,11 @@
 # Documentação das Funções — LineController
 
+## Sumário
+- Visão Geral
+- Funções principais (run_/stop_*)
+- Controle da Turntable 1
+- Watcher da esteira
+
 Arquivo de referência: `lines.py`
 
 ---

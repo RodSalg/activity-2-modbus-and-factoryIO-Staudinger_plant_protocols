@@ -1,5 +1,18 @@
 # Documentação das Funções — RandomFeeder
 
+## Sumário
+- Visão Geral
+- Funcionamento Geral
+- Atributos Principais
+- Funções públicas e internas
+
+Este documento descreve o funcionamento do arquivo `random_feeder.py`, explicando a lógica de cada função e da simulação, **sem modificar o código original**.
+
+Arquivo de referência: `random_feeder.py` 
+
+---
+# Documentação das Funções — RandomFeeder
+
 Este documento descreve o funcionamento do arquivo `random_feeder.py`, explicando a lógica de cada função e da simulação, **sem modificar o código original**.
 
 Arquivo de referência: `random_feeder.py` fileciteturn4file0

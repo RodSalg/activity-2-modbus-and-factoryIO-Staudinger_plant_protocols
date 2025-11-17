@@ -1,5 +1,11 @@
 # Documentação — utils.py (funções e classe utilitária)
 
+## Sumário
+- Visão Geral
+- `now()`
+- `Stoppable`
+- Uso e benefícios
+
 Este documento descreve o conteúdo e o propósito do arquivo `utils.py`, que contém utilitários simples usados por vários módulos do sistema.
 
 Arquivo de referência: `utils.py`

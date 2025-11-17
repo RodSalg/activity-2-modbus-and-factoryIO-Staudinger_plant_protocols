@@ -1,5 +1,10 @@
 # Documentação das Funções — AutoController
 
+## Sumário
+- Estrutura Geral
+- Métodos principais (`start`, `stop`, `_arrival_worker`, `hal_sequence`)
+- Fluxo principal
+
 Este documento complementa o arquivo `auto.py`, explicando **o que cada função faz**, seu papel dentro do fluxo geral de automação e como interage com outros componentes.
 
 ---

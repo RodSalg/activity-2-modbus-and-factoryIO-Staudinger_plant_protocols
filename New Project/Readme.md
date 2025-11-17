@@ -1,3 +1,50 @@
+# Staudinger Plant - Protocols & Simulators
+
+Este diretório contém a implementação e a documentação para os exercícios da atividade sobre protocolos (Modbus) e integração com o Factory I/O — incluindo simuladores, controladores e serviços auxiliares.
+
+**Visão geral:**
+- Código principal em `src/`.
+- Documentação em `docs/`.
+- Dados de exemplo em `orders/`.
+
+**Pré-requisitos**
+- Python 3.8+ instalado
+- Dependências: execute `pip install -r requirements.txt` a partir da raiz do projeto (ou do diretório `New Project` se preferir).
+
+**Instalação rápida**
+1. Abra um terminal na pasta `New Project`:
+
+```powershell
+cd "New Project"
+pip install -r ..\requirements.txt
+```
+
+2. Rodar a aplicação principal (modo de desenvolvimento):
+
+```powershell
+cd "New Project"
+python -m src.main
+```
+
+Ou rodar apenas o servidor (separadamente):
+
+```powershell
+python -m src.server
+```
+
+Observação: os módulos também podem ser executados diretamente (por exemplo, `python src/simulators/random_feeder.py`) — ver `docs/simulators/random_feeder.md` para detalhes.
+
+**Estrutura dos diretórios**
+- `src/` — código-fonte: `addresses.py`, `main.py`, `server.py`, `utils.py`, controllers, services, simulators.
+- `docs/` — documentação detalhada por módulo.
+- `orders/` — arquivos de exemplo/fixtures.
+
+**Onde começar**
+- Leia `docs/main.md` para entender o fluxo geral.
+- Depois leia `docs/server.md` e `docs/addresses.md` para configurar a comunicação.
+- Use `docs/simulators/random_feeder.md` para iniciar um simulador local e `docs/services/orders.md` para ver o formato de pedidos.
+
+Contribuições e correções são bem-vindas — abra uma issue ou um PR no repositório.
 # Fluxograma Geral do Sistema
 
 Abaixo está um fluxograma **Mermaid** que representa o caminho completo do sinal: dos sensores (ou simulador) até as decisões de automação e atuadores (esteiras/turntables).
@@ -64,14 +111,14 @@ Este projeto implementa uma **célula de automação** simulada com Modbus, turn
 
 **Principais módulos:**
 
-* `server.py` — Servidor Modbus + loop de eventos + estados globais
-* `events.py` — Detecção de bordas e despacho de callbacks
-* `auto.py` — Lógica automática (fila de chegadas, HAL, TT1/TT2)
-* `lines.py` — Acionamento físico (giro, belt, watchers)
-* `orders.py` — Fila de pedidos (FIFO) e consumo por cor
+* `server.py`        — Servidor Modbus + loop de eventos + estados globais
+* `events.py`        — Detecção de bordas e despacho de callbacks
+* `auto.py`          — Lógica automática (fila de chegadas, HAL, TT1/TT2)
+* `lines.py`         — Acionamento físico (giro, belt, watchers)
+* `orders.py`        — Fila de pedidos (FIFO) e consumo por cor
 * `random_feeder.py` — Simulador de entradas (caixote/produto) com offsets
-* `addresses.py` — Mapa de **Coils/Inputs/Esteiras**
-* `utils.py` — Utilidades (`now()`, `Stoppable`)
+* `addresses.py`     — Mapa de **Coils/Inputs/Esteiras**
+* `utils.py`         — Utilidades (`now()`, `Stoppable`)
 
 ## Arquitetura (resumo)
 

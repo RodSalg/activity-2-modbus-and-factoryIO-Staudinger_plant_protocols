@@ -1,5 +1,12 @@
 # Documentação — FactoryModbusEventServer (servidor Modbus + loop de eventos)
 
+## Sumário
+- Visão Geral
+- Atributos Principais
+- Ciclo de Vida
+- Loop de Eventos
+- Handlers de Botões
+
 Este documento explica o funcionamento do arquivo `server.py`, que implementa o servidor Modbus responsável por:
 
 * Fazer leitura cíclica dos sensores (coils)

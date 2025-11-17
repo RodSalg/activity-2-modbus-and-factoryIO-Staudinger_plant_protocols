@@ -1,5 +1,11 @@
 # Documentação das Funções — OrderManager e Order
 
+## Sumário
+- Visão Geral
+- `Order` (estrutura e métodos)
+- `OrderManager` (fila, create_order, consume)
+- Fluxo de pedidos
+
 Arquivo de referência: `orders.py`
 
 ---
