@@ -41,22 +41,30 @@ class EventProcessor:
 
         self.first_time = True
 
-        t_handle_storage = threading.Thread(target=self.handle_storage)
+        t_handle_storage = threading.Thread(target=self.handle_storage, daemon=True)
         t_handle_storage.start()
 
         # t_handle_conveyor_storage = threading.Thread(target = self.handle_conveyor_storage)
         # t_handle_conveyor_storage.start()
 
-        t_conveyor_1 = threading.Thread(target=self.handle_conveyor_storage_1)
+        t_conveyor_1 = threading.Thread(
+            target=self.handle_conveyor_storage_1, daemon=True
+        )
         t_conveyor_1.start()
 
-        t_conveyor_2 = threading.Thread(target=self.handle_conveyor_storage_2)
+        t_conveyor_2 = threading.Thread(
+            target=self.handle_conveyor_storage_2, daemon=True
+        )
         t_conveyor_2.start()
 
-        t_conveyor_3 = threading.Thread(target=self.handle_conveyor_storage_3)
+        t_conveyor_3 = threading.Thread(
+            target=self.handle_conveyor_storage_3, daemon=True
+        )
         t_conveyor_3.start()
 
-        t_conveyor_4 = threading.Thread(target=self.handle_conveyor_storage_4)
+        t_conveyor_4 = threading.Thread(
+            target=self.handle_conveyor_storage_4, daemon=True
+        )
         t_conveyor_4.start()
 
     def handle_storage(self):
