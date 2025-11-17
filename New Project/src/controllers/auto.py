@@ -7,7 +7,7 @@ from services.DAO import MES
 
 
 class AutoController:
-    def __init__(self, server, verbose: bool = True):
+    def __init__(self, server, verbose: bool = False):
         self.server = server
         self.verbose = verbose
         self._thread = None
@@ -34,8 +34,8 @@ class AutoController:
 
         self.TT2_GIRO_S = 1.6
         self.TT2_RETORNO_S = 1.6
-        self.TT2_ENTRADA_TOUT = 6.0
-        self.TT2_SAIDA_TOUT = 6.0
+        self.TT2_ENTRADA_TOUT = 8.0
+        self.TT2_SAIDA_TOUT = 8.0
 
         self._stop_event = threading.Event()
         self.running = False
