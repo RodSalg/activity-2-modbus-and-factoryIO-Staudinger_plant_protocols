@@ -179,3 +179,4 @@ python main.py
 1. Thiago Rodrigo Monteiro Salgado
 2. Lukas Lujan Moreira
 3. Nathalia Damasceno Colares
+4. Gledyson Cidade
