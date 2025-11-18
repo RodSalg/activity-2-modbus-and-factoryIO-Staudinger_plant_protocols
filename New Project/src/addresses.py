@@ -145,6 +145,8 @@ class Inputs:
     PICK_PLACE = 59
     ESTEIRA_CARREGAMENTO = 47
 
+    Emitter_resource_box = 53
+
 class Esteiras(IntEnum):
     Esteira_Producao_1 = 30
     Esteira_Freio_Sensor = 31
