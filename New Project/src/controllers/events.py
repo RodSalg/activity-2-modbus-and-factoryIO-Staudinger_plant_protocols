@@ -61,9 +61,7 @@ class EventProcessor:
 
         # --- threads client warehouse
 
-        t_esteira_principal = threading.Thread(
-            target=self.handle_esteira_principal, daemon=True
-        )
+        t_esteira_principal = threading.Thread(target=self.handle_esteira_principal, daemon=True)
         t_esteira_principal.start()
 
     def handle_esteira_principal(self):
@@ -94,6 +92,8 @@ class EventProcessor:
         """Callback para HALL 1_6 - pausa esteira de pedido"""
         if self.verbose:
             print("HALL_1_6 detectado - pausando esteira de pedido")
+
+        print("HALL_1_6 detectado - pausando esteira de pedido")
 
         self.server.set_actuator(Inputs.ESTEIRA_PEDIDO, False)
 
