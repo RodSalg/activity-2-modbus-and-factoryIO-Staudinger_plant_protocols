@@ -1,3 +1,9 @@
+# Criando um ambiente
+
+- - ```python -m venv env-factoryIO-modbus```
+- - ```activate env-factoryIO-modbus\Scripts\Activate.ps1``` ou escolhendo o arquivo python.exe pelo vsCODE no diretorio ./env-factoryIO-modbus/python.exe
+- - after activate environment run in terminal: ``` pip install -r requirements.txt ```
+
 # Funcionamento dos IOs
 
 
