@@ -32,8 +32,8 @@ class AutoController:
         self._tt2_worker_th = None
         self.turntable2_busy = False
 
-        self.TT2_GIRO_S = 1.6
-        self.TT2_RETORNO_S = 1.6
+        self.TT2_GIRO_S = 3
+        self.TT2_RETORNO_S = 3
         self.TT2_ENTRADA_TOUT = 8.0
         self.TT2_SAIDA_TOUT = 8.0
 
@@ -615,7 +615,7 @@ class AutoController:
             t0 = time.time()
             while (
                 time.time() - t0 < belt_timeout_s
-                and self.server.machine_state == "running"
+                # and self.server.machine_state == "running"
             ):
                 val = self.server.get_sensor(Coils.Discharg_Sensor)
                 if val:
