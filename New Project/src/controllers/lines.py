@@ -458,12 +458,6 @@ class LineController:
         #     return
 
         self._t_ciclo_turntable3()
-        
-        # threading.Thread(
-        #     target=self._t_ciclo_turntable3, 
-        #     name="T_CicloTT3", 
-        #     daemon=True
-        # ).start()
 
     def _t_ciclo_turntable3(self):
         """Thread que executa o ciclo completo da turntable 3"""
@@ -481,7 +475,7 @@ class LineController:
                 print("📦 Iniciando ciclo da Turntable 3")
             
             # Para a esteira forward
-            time.sleep(1.5)
+            time.sleep(1)
             self.server.set_actuator(Inputs.Turntable3_forward, False)
             time.sleep(1.5)
             
@@ -494,17 +488,19 @@ class LineController:
             # Liga esteira forward e esteira de pedido
             if self.verbose:
                 print("Ligando esteiras...")
-            self.server.set_actuator(Inputs.Turntable3_forward, True)
+
             self.server.set_actuator(Inputs.ESTEIRA_PEDIDO, True)
-            time.sleep(2.5)
+            self.server.set_actuator(Inputs.Turntable3_forward, True)
+
+            time.sleep(3)
             
             # Desliga esteira forward
             self.server.set_actuator(Inputs.Turntable3_forward, False)
-            time.sleep(2.5)
+            time.sleep(3)
             
             # Volta turntable para posição original
             self.server.set_actuator(Inputs.Turntable3_turn, False)
-            self.server.set_actuator(Inputs.ESTEIRA_PEDIDO, False)
+            # self.server.set_actuator(Inputs.ESTEIRA_PEDIDO, False)
             
             if self.verbose:
                 print("✅ Ciclo da Turntable 3 concluído")
@@ -518,9 +514,9 @@ class LineController:
 
 
     def start_esteira_carregamento(self):
-        """Liga a esteira de carregamento"""
-        if self.server.machine_state != "running":
-            return
+        # """Liga a esteira de carregamento"""
+        # if self.server.machine_state != "running":
+        #     return
         
         if self.verbose:
             print("Ligando esteira de carregamento")
@@ -555,7 +551,7 @@ class LineController:
 
         try:
         
-            self.server.write_input_register(address=Holding_Registers.posicao_alvo, value = self.warehouse_data_structure.storage_column_number)
+            self.server.write_input_register(address = Holding_Registers.posicao_alvo, value = self.warehouse_data_structure.storage_column_number)
             time.sleep(2)
             print('\t\t', Coils.sensor_move_warehouse)
             
@@ -596,12 +592,14 @@ class LineController:
             self.server.set_actuator(Inputs.manejador_dentro, False)
             time.sleep(1)
 
-            self.server.write_input_register(address=Holding_Registers.posicao_alvo, value = 300)
+            self.server.write_input_register(address=Holding_Registers.posicao_alvo, value = 5)
 
             time.sleep(1)
             while(self.server.get_sensor(Coils.sensor_move_warehouse)): time.sleep(0.2)
 
-            self.warehouse_data_structure._occupy_position(column_free, row_free, self.get_current_color_storage(), f'{column_free}_{row_free}_order')
+            color_box = self.get_current_color_storage()
+
+            self.warehouse_data_structure._occupy_position(column_free, row_free, color_box, f'{column_free}_{row_free}_order')
             time.sleep(0.1)
             self.warehouse_data_structure.print_warehouse_map()
 
@@ -727,7 +725,7 @@ class LineController:
                 print(f"[STORAGE] Cliente: {client_name}")
                 print(f"[STORAGE] Restam {len(self.config.queue_orders)} items na fila")
             
-            return client_name
+            return client_name, first_item.get("color_box", None)
             
         except (IndexError, AttributeError) as e:
 
@@ -815,7 +813,8 @@ class LineController:
             time.sleep(1)
 
             print('momento de mandar para a proxima coluna disponível')
-            client_position = self.warehouse_data_structure._find_next_available_client_position(self.get_current_client_storage())
+            client, color_box = self.get_current_client_storage()
+            client_position = self.warehouse_data_structure._find_next_available_client_position(client)
 
             if client_position is None:
                 print('[ERRO] client está completamente cheio! Impossível armazenar.')
@@ -840,12 +839,12 @@ class LineController:
             self.server.set_actuator(Inputs.manejador_dentro, False)
             time.sleep(1)
 
-            self.server.write_input_register(address=Holding_Registers.posicao_alvo, value = 300)
+            self.server.write_input_register(address=Holding_Registers.posicao_alvo, value = 5)
 
             time.sleep(1)
             while(self.server.get_sensor(Coils.sensor_move_warehouse)): time.sleep(0.2)
 
-            self.warehouse_data_structure._occupy_position(column_free, row_free, self.whichProductIs(), f'{column_free}_{row_free}_order')
+            self.warehouse_data_structure._occupy_position(column_free, row_free, color_box, f'{column_free}_{row_free}_order')
             time.sleep(0.1)
             self.warehouse_data_structure.print_warehouse_map()
 
